@@ -1,0 +1,21 @@
+{
+  "name": "almacen-project",
+  "version": "1.0.0",
+  "description": "Sistema de gestión de almacén (SPA vanilla JS + Supabase)",
+  "private": true,
+  "scripts": {
+    "copy-vendor": "node -e \"const f=require('fs');f.copyFileSync('node_modules/@supabase/supabase-js/dist/umd/supabase.js','public/vendor/supabase.js');f.copyFileSync('node_modules/jsbarcode/dist/JsBarcode.all.min.js','public/vendor/jsbarcode.js');console.log('vendor actualizado')\"",
+    "start": "serve public",
+    "dev": "serve public"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.4.1",
+    "@supabase/supabase-js": "^2.112.3",
+    "@tailwindcss/cli": "^4.3.3",
+    "jsbarcode": "^3.12.3",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gestión de Almacén</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="login-screen"><div class="login-card"><p class="login-sub">Cargando…</p></div></div>
+    </div>
+
+    <!-- Vendor: supabase-js UMD (expone window.supabase) -->
+    <script src="./vendor/supabase.js"></script>
+    <!-- Vendor: JsBarcode (expone window.JsBarcode) para etiquetas -->
+    <script src="./vendor/jsbarcode.js"></script>
+    <!-- Configuración del proyecto (rellenar) -->
+    <script src="./js/config.js"></script>
+    <!-- App -->
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
