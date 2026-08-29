@@ -7,109 +7,165 @@ No hay servidor propio: el navegador habla con Supabase usando `supabase-js`.
 
 - **Frontend:** HTML + CSS + JavaScript (ES modules), sin paso de build.
 - **Datos/Auth/API:** Supabase (Postgres + PostgREST + Auth + RLS).
-- **Librería:** `@supabase/supabase-js` (UMD, servido localmente en `public/vendor/supabase.js`).
+- **Librerías:** `@supabase/supabase-js` y `JsBarcode`, servidas localmente desde `public/vendor/`.
+
+Como no hay backend, **la lógica que debe ser atómica vive en funciones de Postgres**
+(`registrar_movimiento`, `set_producto_unidad`, `cambiar_estado_existencia`) y se llama con
+`supabase.rpc(...)`. Las reglas de negocio se imponen con constraints e índices, no solo en la
+interfaz: así resisten concurrencia y no dependen de que el frontend se acuerde de validar.
 
 ## Estructura
 
 ```
-supabase/migrations/0001_init.sql   Esquema: tablas, FKs, RLS, vistas y seed
-public/                             Sitio estático
+supabase/migrations/       Esquema versionado (ver "Migraciones")
+public/
   index.html
-  css/styles.css                   Admin template (claro/oscuro)
-  vendor/supabase.js               Bundle UMD de supabase-js
+  css/styles.css           Admin template (claro/oscuro), WCAG AA
+  vendor/                  supabase.js + jsbarcode.js (UMD)
   js/
-    config.js                      URL + anon key (RELLENAR)
-    supabaseClient.js  auth.js  ui.js  crud.js  app.js
-    views/                         Una por pantalla
+    config.js              URL + anon key — NO versionado, copiar de config.example.js
+    app.js                 Router por hash, sesión y navegación
+    crud.js                Fábrica de pantallas CRUD (listas, formularios, segmentos, búsqueda)
+    ui.js                  Elementos, modales, tablas, combobox, impresión
+    supabaseClient.js  auth.js
+    productSearch.js       Buscador de productos/existencias del carrito
+    pickerModal.js         Selector genérico de un elemento con filtro
+    historialProducto.js   Movimientos de un producto (modal)
+    barcode.js             Códigos de barras y etiqueta imprimible
+    views/                 Una por pantalla
 ```
 
 ## Puesta en marcha
 
-1. **Crear el esquema.** En el proyecto Supabase → SQL Editor, ejecuta **en orden**:
-   1. `supabase/migrations/0001_init.sql` — tablas, RLS, vistas y datos semilla.
-   2. `supabase/migrations/0002_movimientos_ticket.sql` — código de barras, movimientos
-      maestro-detalle con folio, stock agrupado y la función `registrar_movimiento`.
-   3. `supabase/migrations/0003_activo_fijo_unico.sql` — regla de activo fijo.
-   4. `supabase/migrations/0004_fijar_search_path.sql` — cierra el aviso de seguridad
-      `function_search_path_mutable` del linter de Supabase.
-   5. `supabase/migrations/0005_stock_por_estado_ubicacion.sql` — el stock se identifica
-      por producto + almacén + estado + ubicación.
-
-2. **Crear un usuario.** Supabase → Authentication → Users → *Add user* (email + contraseña),
-   o habilita el registro por email. Ese usuario es el que iniciará sesión.
-
-3. **Configurar credenciales.** Edita `public/js/config.js`:
-   ```js
-   window.CONFIG = {
-     url: "https://TU-PROYECTO.supabase.co",
-     anonKey: "TU_ANON_O_PUBLISHABLE_KEY",
-   };
-   ```
-   (La clave anon/publishable es pública por diseño; la seguridad la impone RLS.)
-
-4. **Refrescar el vendor** (solo si actualizas supabase-js):
-   ```bash
-   npm run copy-vendor
-   ```
-
-5. **Servir el sitio** (se requiere http://, no `file://`):
+1. **Aplicar las migraciones** de `supabase/migrations/` en orden, desde el SQL Editor de Supabase.
+2. **Crear un usuario** en Supabase → Authentication → Users. Sin sesión no se ve nada: RLS
+   restringe todo a `authenticated`.
+3. **Configurar credenciales**: copia `public/js/config.example.js` a `public/js/config.js` y
+   rellena `url` y `anonKey`. (La clave anon/publishable es pública por diseño; la seguridad la
+   impone RLS. `config.js` está en `.gitignore`.)
+4. **Servir el sitio** (se requiere `http://`, no `file://`):
    ```bash
    npm start
    ```
    Abre http://localhost:3000
 
-## Funcionalidad
+Si actualizas las librerías: `npm run copy-vendor`.
 
-**Mantenimientos (CRUD, sin borrado físico — solo `activo=false`; las listas muestran solo activos):**
-Productos, Unidades de medida, Estados, Equipos, Almacenes.
+## Modelo de datos
 
-- En **Productos**, "Equipos compatibles" es un **selector múltiple** (tabla puente `producto_equipo`,
-  que además conecta la entidad `EQUIPOS`).
-- **Código de barras**: si lo escribes se respeta; si lo dejas vacío la base lo genera como
-  `BAR-{no_parte}` (espacios → `_`, con sufijo `-{id}` si ya existe) o `SYS-{id}` si no hay no. de parte.
-  Se dibuja con JsBarcode.
+### Catálogos
+`almacenes` · `unidades_medida` · `estados` · `equipos` · `proveedores` · `unidad_operativa` · `usuarios`
 
-**Movimientos — flujo de 3 pasos:**
+### Productos y unidades físicas
 
-1. `#/movimientos` — eliges el **almacén** en tarjetas.
-2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por no. de parte, nombre y estado.
-3. `#/movimientos/{id}/nuevo` — encabezado + **carrito**:
-   - **Agregar producto** abre un modal de búsqueda con autocompletado (debounce de 300 ms) sobre
-     `no_parte`, `nombre` y `no_serie`, con badge de existencia y alta rápida de productos.
-   - **Stock Inicial** (casilla): *reemplaza* la existencia en lugar de sumarla.
-   - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket con su código de barras.
+- **`productos`** — el catálogo. La bandera **`es_trazable`** parte el sistema en dos:
+  - **Consumibles** (`false`): se cuentan por cantidad. Llevan unidad de medida.
+  - **Trazables/Componentes** (`true`): son una máquina concreta. Su serie, código interno,
+    modelo y estado viven en `producto_unidad`, no aquí.
+- **`producto_unidad`** — la unidad física de un producto trazable. `descripcion` es una columna
+  **generada**: `modelo/no_serie`, o `modelo/codigo_interno` si no hay serie.
 
-El guardado usa la función `registrar_movimiento`, que hace encabezado + detalle + ajuste de stock
-en **una sola transacción**.
+> Dos productos trazables con series distintas **son productos distintos**, aunque compartan
+> nombre y número de parte. Por eso `no_parte` solo es único entre consumibles.
 
-**Stock por almacén — solo consulta.** Agrupado por `no_parte` (la suma la hace SQL, en
-`vw_stock_agrupado`), con `🔍 Ver detalles` que abre el desglose de series individuales. El stock ya
-**no se edita aquí**: se modifica únicamente registrando movimientos.
+### Stock y movimientos
+
+- **`producto_almacen`** — una existencia es la combinación **producto + almacén + estado +
+  ubicación**. No es "producto en almacén".
+- **`movimientos`** — la cabecera del ticket (folio, fecha, tipo, almacén). Puede referenciar
+  `id_producto_unidad`, `id_equipo`, `id_unidad_operativa` e `id_proveedor`.
+- **`movimiento_detalle`** — las líneas del carrito, cada una apuntando a la existencia exacta.
+
+### Equipos y proyectos
+
+- **`equipos`** — catálogo de maquinaria.
+- **`equipo_unidad_operativa`** — historial de a qué proyecto minero está asignado cada equipo.
+  Una fila **sin `fecha_fin` es la asignación vigente**.
 
 ## Reglas de negocio
 
-- **Identidad del stock**: una existencia es la combinación **producto + almacén + estado + ubicación**.
-  Si registras un movimiento con un estado o una ubicación distintos, **no se suma**: se crea una
-  existencia nueva. Lo garantiza el índice `uq_producto_almacen_grano` (con `NULLS NOT DISTINCT`, para
-  que dos filas «sin estado» choquen entre sí en lugar de multiplicarse).
-- **Ubicación normalizada**: `A-7`, `a-7` y `A-7 ` son la misma ubicación. La columna generada
-  `ubicacion_norm` (`upper(btrim(...))`) es la que se indexa; `ubicacion` conserva lo que escribió
-  el usuario. Sin esto el almacén se fragmentaría solo.
-- **Activo fijo**: un producto con `activofijo = true` solo puede existir en **un almacén** y no puede
-  duplicarse (`uq_producto_almacen_activo_fijo`). Como es una unidad física única, cambiarle el estado
-  o la ubicación lo **traslada** (actualiza su fila) en vez de crear otra. Moverlo a **otro almacén**
-  sigue exigiendo darle salida primero.
-- **Salidas**: el renglón identifica la existencia exacta (`producto_almacen_id`), porque un mismo
-  producto puede tener varias existencias en el almacén. No hay descuentos automáticos.
-- **Stock Inicial** sobrescribe **solo esa existencia**; las demás del mismo producto no se tocan.
-  Una entrada normal suma y una salida resta (nunca por debajo de cero).
+Todas están impuestas en la base de datos, no solo en la interfaz.
+
+| Regla | Cómo se garantiza |
+|---|---|
+| Sin borrado físico: solo `activo = false`, y las listas muestran solo activos | Convención en `crud.js` |
+| Una existencia es producto + almacén + estado + ubicación; un estado o ubicación distintos **crean una nueva**, no suman | `uq_producto_almacen_grano` con `NULLS NOT DISTINCT` |
+| `A-7`, `a-7` y `A-7 ` son la misma ubicación | Columna generada `ubicacion_norm` (`upper(btrim(...))`), que es la indexada |
+| Un artículo **trazable** ocupa una sola existencia activa | `uq_producto_almacen_trazable` |
+| Un trazable ya en inventario **solo admite salidas**; vuelve a admitir entrada cuando su stock llega a 0 | Validación en `registrar_movimiento` |
+| Cambiarle estado o ubicación a un trazable lo **traslada**, no lo duplica | `cambiar_estado_existencia` |
+| Una **serie** y un **código interno** no se repiten entre unidades activas | `uq_producto_unidad_no_serie`, `uq_producto_unidad_codigo_interno` |
+| `no_parte` único **solo entre consumibles** (los trazables lo comparten entre unidades) | `uq_productos_no_parte_consumible` |
+| Un equipo no puede estar en dos unidades operativas a la vez | `uq_euo_asignacion_abierta` (máx. una sin `fecha_fin`) |
+| Dos equipos no comparten `codigo_asignado` vigente en la misma unidad | `uq_euo_codigo_asignado_vigente` |
+| Código y RUC únicos entre proveedores activos | `uq_proveedores_codigo`, `uq_proveedores_ruc` |
+| **Stock Inicial** sobrescribe solo esa existencia; una entrada suma y una salida resta, nunca bajo cero | `registrar_movimiento` |
+| Las salidas descuentan de una existencia **identificada**, sin repartos automáticos | El renglón manda `producto_almacen_id` |
+
+### Valores derivados (no se capturan a mano)
+
+- `producto_unidad.descripcion` — columna generada.
+- `productos.codigo_barras` — trigger: manual → `BAR-{no_parte}` → `SYS-{id}`.
+- `movimientos.folio` — trigger: `TKT-{AAMMDD}-{####}` desde una secuencia.
+- `equipos.unidad_actual` y `equipos.estado_actual` — trigger que los toma de la asignación más
+  reciente en `equipo_unidad_operativa`. **Editarlos a mano no sirve**: el siguiente cambio de
+  asignación los pisa, por eso no están en el formulario.
+
+## Pantallas
+
+**Inventario**
+- **Productos** — dos pestañas (Consumibles / Componentes) sobre la misma tabla. Búsqueda por
+  nombre, no. de parte, marca y código de barras; en Componentes también por serie y código
+  interno. Botón **Imprimir** (etiqueta con código de barras) y, solo en trazables,
+  **Movimientos** (historial en modal).
+- **Stock por almacén** — solo consulta, agrupado por número de parte. Filtros por almacén, no.
+  de parte, nombre, **serie** y estado. `🔍 Ver detalles` abre el desglose de existencias y
+  permite reclasificar (cambiar estado/ubicación), fusionando si el destino ya existe.
+- **Movimientos** — flujo de 3 pasos: elegir almacén → tickets del almacén → capturar.
+  El formulario tiene carrito, casilla de Stock Inicial y cuatro referencias opcionales con
+  selector filtrable: **producto activo, equipo, unidad operativa y proveedor**.
+  Al guardar se genera el folio y se muestra el ticket, imprimible.
+
+**Catálogos** — Almacenes · Unidades de medida · Estados · Equipos · Proveedores
+
+**Operaciones** — Unidades operativas · Equipos por unidad
+
+## Migraciones
+
+El historial formal en Supabase empieza en `movimientos_ticket`: la `0001` se ejecutó a mano en
+el SQL Editor, así que no aparece en `supabase_migrations`. No hay que "recuperarla" — las tablas
+existen y el archivo es idempotente.
+
+**La numeración de `supabase/migrations/` tiene huecos** (faltan 0011, 0012, 0015, 0018 y 0023).
+Esas migraciones se aplicaron directo a la base vía el MCP de Supabase y nunca quedó el archivo
+local. La base es la fuente de verdad; los archivos presentes sí reflejan lo aplicado.
+
+Todas las migraciones son **idempotentes**: pueden re-ejecutarse sin romper nada.
 
 ## Notas de diseño
 
-- `usuarios` se sincroniza solo al iniciar sesión (enlace `auth_uid` con `auth.users`); no tiene pantalla.
-- `movimientos` es un log (sin `activo`).
-- RLS: acceso total para usuarios `authenticated`. Se puede granularizar por rol sin tocar el frontend.
-- La columna `activoFijo` de `productos` se guarda como `activofijo` (Postgres pasa a minúsculas los
-  identificadores sin comillas); el frontend usa ese nombre.
-- Paleta con tokens de tinta separados (`--*-ink`) para que todo el texto cumpla contraste
-  **WCAG AA (4.5:1)** en tema claro y oscuro.
+- **Convenciones de nombres**: `activo` (no `active`), sin acentos en identificadores
+  (`observacion`, `descripcion`), y `estado_id` para las FK al catálogo `estados`. Postgres pasa
+  a minúsculas los identificadores sin comillas — por eso `activoFijo` terminó siendo `activofijo`
+  antes de renombrarse a `es_trazable`.
+- **`usuarios`** se sincroniza solo al iniciar sesión (enlace `auth_uid` con `auth.users`); no
+  tiene pantalla.
+- **`movimientos` es un log**: no tiene `activo` ni se edita.
+- **RLS**: acceso total para `authenticated`. Se puede granularizar por rol sin tocar el frontend.
+- **`equipos` es un catálogo flotante**: `productos.equipos_compatible` guarda los modelos como
+  texto, sin FK. Consecuencia asumida: renombrar un modelo en `equipos` no actualiza los
+  productos que ya lo referencian.
+- **Accesibilidad**: paleta con tokens de tinta (`--*-ink`) para que todo el texto cumpla
+  contraste **WCAG AA (4.5:1)** en tema claro y oscuro; foco visible en todo lo interactivo.
+- **Rendimiento**: las listas solo resuelven los catálogos de las columnas que muestran, y las
+  consultas independientes se lanzan en paralelo.
+
+## Pendientes conocidos
+
+- Aviso abierto del linter de Supabase: *Leaked Password Protection Disabled* (configuración de
+  Auth, no tocada por decisión).
+- `equipos.unidad_actual` conserva texto antiguo (`Corona`, `TCH`, `Unidad 2`) en equipos que aún
+  no tienen asignación en `equipo_unidad_operativa`. Se corrigen solos al crearles una.
+- El estado `Operativo` se agregó al catálogo `estados` para no perder datos al convertir el
+  estado de las asignaciones a FK; convive con los estados de producto.
+- Los flujos con sesión iniciada no están probados de forma automatizada: requieren credenciales.
