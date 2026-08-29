@@ -185,6 +185,23 @@ export const PICKER_UNIDAD_OPERATIVA = {
   ],
 };
 
+export const PICKER_PROVEEDOR = {
+  titulo: "Elegir proveedor",
+  placeholder: "Razón social, código, RUC, contacto…",
+  tabla: "vw_proveedores_lista",
+  campos: ["razon_social", "codigo", "ruc", "contacto", "email"],
+  orden: "razon_social",
+  icono: "🏭",
+  vacio: "Todavía no hay proveedores registrados.",
+  principal: (r) => r.etiqueta || r.razon_social,
+  detalles: (r) => [
+    { label: "RUC", valor: r.ruc },
+    { label: "Contacto", valor: r.contacto },
+    { label: "Teléfono", valor: r.telefono },
+    { label: "Email", valor: r.email },
+  ],
+};
+
 export const PICKER_EQUIPO = {
   titulo: "Elegir equipo",
   placeholder: "Modelo, serie, marca, descripción…",

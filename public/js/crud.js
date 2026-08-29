@@ -25,8 +25,18 @@ import {
 // Cada opción puede además leer de otra fuente y mostrar otras columnas
 // (`table` y `columns`), útil cuando una pestaña necesita datos unidos de
 // otra tabla. Guardar y desactivar siguen yendo a `config.table`.
+// `search` (opcional) añade una caja de búsqueda con filtro en varias
+// columnas a la vez: { placeholder, fields: [...] } (`.ilike` sobre cada
+// campo, combinados con OR). Una opción de `segments` puede declarar su
+// propio `searchFields` cuando su tabla tiene columnas distintas a las del
+// resto (p. ej. una vista con más campos que la tabla base).
+//
+// La búsqueda solo refresca la lista, no toda la pantalla: si se
+// reconstruyera la página completa en cada tecleo, el propio campo de texto
+// se recrearía y el usuario perdería el foco mientras escribe.
 export function createCrudView(config) {
   let segmentoActivo = config.segments?.options?.[0]?.value;
+  let termino = "";
 
   return {
     async render(root) {
@@ -36,8 +46,6 @@ export function createCrudView(config) {
       root.appendChild(
         buildHeader(config, () => openForm(config, null, () => this.render(root), segmentoActivo))
       );
-
-      const listContainer = el("div", { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
 
       if (config.segments) {
         root.appendChild(
@@ -49,10 +57,45 @@ export function createCrudView(config) {
       }
 
       const opcion = config.segments?.options?.find((o) => o.value === segmentoActivo);
+      const camposBusqueda = opcion?.searchFields || config.search?.fields;
+
+      const listContainer = el("div", { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
+      const cargarLista = () =>
+        refreshList(config, listContainer, () => this.render(root), segmentoActivo, opcion, termino, camposBusqueda);
+
+      if (config.search && camposBusqueda?.length) {
+        root.appendChild(
+          buildSearchBar(config.search, termino, (valor) => {
+            termino = valor;
+            cargarLista();
+          })
+        );
+      }
+
       root.appendChild(listContainer);
-      await refreshList(config, listContainer, () => this.render(root), segmentoActivo, opcion);
+      await cargarLista();
     },
   };
+}
+
+function buildSearchBar(search, valor, onChange) {
+  const input = el("input", {
+    id: "f-busqueda", class: "input", type: "search", value: valor,
+    placeholder: search.placeholder || "Buscar…",
+    autocomplete: "off", spellcheck: "false",
+    oninput: debounce((e) => onChange(e.target.value)),
+  });
+  return el("div", { class: "filters" }, [
+    el("div", { class: "filter filter--primary" }, [
+      el("label", { class: "filter-label", for: "f-busqueda", text: "Buscar" }),
+      input,
+    ]),
+  ]);
+}
+
+function debounce(fn, ms = 300) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
 function buildSegments(segments, activo, onChange) {
@@ -86,7 +129,7 @@ function buildHeader(config, onNew) {
   ]);
 }
 
-async function refreshList(config, container, rerender, segmentoActivo, opcion) {
+async function refreshList(config, container, rerender, segmentoActivo, opcion, termino, camposBusqueda) {
   clear(container);
   // La pestaña puede leer de una vista distinta (con datos unidos); las
   // escrituras siguen yendo a config.table.
@@ -99,22 +142,31 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion) 
   if (config.segments && segmentoActivo !== undefined) {
     query = query.eq(config.segments.key, segmentoActivo);
   }
+  if (termino && camposBusqueda?.length) {
+    // La sintaxis de .or() usa comas y paréntesis como separadores.
+    const seguro = termino.replace(/[,()%]/g, " ").trim();
+    if (seguro) query = query.or(camposBusqueda.map((f) => `${f}.ilike.%${seguro}%`).join(","));
+  }
 
-  const { data, error } = await query;
+  const columns = opcion?.columns || config.columns;
+
+  // La consulta principal y las de resolución de columnas son independientes:
+  // van en paralelo en vez de una tras otra.
+  const [{ data, error }, resolvers] = await Promise.all([
+    query,
+    buildColumnResolvers(config, columns),
+  ]);
   if (error) {
     container.appendChild(el("div", { class: "alert alert--error", text: `Error al cargar: ${error.message}` }));
     return;
   }
 
-  // Resolver etiquetas de columnas que apuntan a otra tabla (para mostrar nombres en vez de ids)
-  const resolvers = await buildColumnResolvers(config);
-
-  const columns = (opcion?.columns || config.columns).map((c) => ({
+  const columnasConRender = columns.map((c) => ({
     ...c,
     render: c.render || (resolvers[c.key] ? (row) => resolvers[c.key](row[c.key]) : undefined),
   }));
 
-  const table = buildTable(columns, data || [], (row) => [
+  const table = buildTable(columnasConRender, data || [], (row) => [
     ...(config.rowActions ? config.rowActions(row, rerender) : []),
     iconButton("Editar", "btn--ghost", () => openForm(config, row, rerender)),
     iconButton("Desactivar", "btn--danger-ghost", () => softDelete(config, row, rerender)),
@@ -123,13 +175,21 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion) 
   container.appendChild(el("div", { class: "list-meta", text: `${(data || []).length} registro(s) activos.` }));
 }
 
-async function buildColumnResolvers(config) {
+// Solo resuelve los campos `select` que de verdad aparecen como columna en
+// la lista visible: pedir el catálogo completo de un campo que ni se
+// muestra (p. ej. "estado" cuando la pestaña activa no lo lista) es una
+// consulta desperdiciada en cada render.
+async function buildColumnResolvers(config, columns) {
+  const claves = new Set(columns.map((c) => c.key));
+  const fuentes = (config.fields || []).filter(
+    (f) => f.source && f.type === "select" && claves.has(f.name)
+  );
+  const entradas = await Promise.all(
+    fuentes.map(async (f) => [f.name, await loadOptionsMap(f.source)])
+  );
   const resolvers = {};
-  for (const field of config.fields || []) {
-    if (field.source && (field.type === "select")) {
-      const map = await loadOptionsMap(field.source);
-      resolvers[field.name] = (id) => map.get(String(id)) || (id == null ? "—" : String(id));
-    }
+  for (const [nombre, mapa] of entradas) {
+    resolvers[nombre] = (id) => mapa.get(String(id)) || (id == null ? "—" : String(id));
   }
   return resolvers;
 }
@@ -154,13 +214,16 @@ async function loadOptionsMap(source) {
 async function openForm(config, record, rerender, segmentoDefault) {
   const isEdit = !!record;
 
-  // Cargar opciones de campos select/multiselect
-  const fields = [];
-  for (const f of config.fields) {
-    let field = { ...f };
-    if (f.source) field.options = await loadOptions(f.source);
-    fields.push(field);
-  }
+  // Cargar opciones de campos select/multiselect: en paralelo, no una tras
+  // otra. Promise.all conserva el orden del arreglo aunque las respuestas
+  // lleguen en otro orden.
+  const fields = await Promise.all(
+    config.fields.map(async (f) => {
+      const field = { ...f };
+      if (f.source) field.options = await loadOptions(f.source);
+      return field;
+    })
+  );
 
   // Datos relacionados (p.ej. equipos seleccionados de un producto)
   let related = {};
@@ -284,6 +347,8 @@ const UNICIDAD = {
   uq_unidad_operativa_codigo: "Ya existe una unidad operativa con ese código.",
   uq_equipos_codigo: "Ya existe un equipo con ese código.",
   ck_euo_fechas: "La fecha de fin no puede ser anterior a la de inicio.",
+  uq_proveedores_codigo: "Ya existe un proveedor con ese código.",
+  uq_proveedores_ruc: "Ya existe un proveedor con ese RUC.",
 };
 
 export function mensajeError(error) {

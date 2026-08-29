@@ -5,7 +5,10 @@
 import { supabase } from "../supabaseClient.js";
 import { getCurrentUsuario } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
-import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA } from "../pickerModal.js";
+import {
+  openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO,
+  PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR,
+} from "../pickerModal.js";
 import { renderBarcodeLabel } from "../barcode.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
 
@@ -257,7 +260,10 @@ async function renderForm(root, almacenId) {
   // ---- Referencias opcionales del ticket: a qué unidad y a qué equipo va.
   // Se eligen en un modal con filtro, no en un desplegable: estas listas
   // crecen y buscar por serie o código es más rápido que recorrerlas.
-  const referencias = { id_producto_unidad: null, id_equipo: null, id_unidad_operativa: null };
+  const referencias = {
+    id_producto_unidad: null, id_equipo: null,
+    id_unidad_operativa: null, id_proveedor: null,
+  };
 
   const refUnidad = buildReferencia({
     etiqueta: "Producto Activo", icono: "🔧", textoBoton: "Elegir producto activo",
@@ -280,12 +286,21 @@ async function renderForm(root, almacenId) {
     describir: (row) => row.etiqueta || row.nombre,
   });
 
+  const refProveedor = buildReferencia({
+    etiqueta: "Proveedor", icono: "🏭", textoBoton: "Elegir proveedor",
+    config: PICKER_PROVEEDOR,
+    onElegir: (row) => { referencias.id_proveedor = row?.id ?? null; },
+    describir: (row) => row.etiqueta || row.razon_social,
+  });
+
   root.appendChild(
     el("section", { class: "card card--pad" }, [
       el("h3", { class: "section-title", text: "Datos del movimiento" }),
       grid,
       bloqueInicial,
-      el("div", { class: "refs" }, [refUnidad.nodo, refEquipo.nodo, refUnidadOperativa.nodo]),
+      el("div", { class: "refs" }, [
+        refUnidad.nodo, refEquipo.nodo, refUnidadOperativa.nodo, refProveedor.nodo,
+      ]),
     ])
   );
 
@@ -511,6 +526,7 @@ async function renderForm(root, almacenId) {
         p_id_producto_unidad: referencias.id_producto_unidad,
         p_id_equipo: referencias.id_equipo,
         p_id_unidad_operativa: referencias.id_unidad_operativa,
+        p_id_proveedor: referencias.id_proveedor,
       });
       if (error) throw error;
 
@@ -556,6 +572,7 @@ async function verTicket(mov) {
   const unidadOp = [t.unidad_operativa_codigo, t.unidad_operativa_nombre].filter(Boolean).join(" · ");
   const ubicacionOp = [t.unidad_operativa_proyecto, t.unidad_operativa_ubicacion, t.unidad_operativa_zona]
     .filter(Boolean).join(" · ");
+  const proveedor = [t.proveedor_codigo, t.proveedor_razon_social].filter(Boolean).join(" · ");
 
   // Nada vacío llega al papel: cada dato aparece solo si tiene valor.
   const datos = [
@@ -567,6 +584,8 @@ async function verTicket(mov) {
     ["Equipo", equipo],
     ["Unidad operativa", unidadOp],
     ["Proyecto / zona", ubicacionOp],
+    ["Proveedor", proveedor],
+    ["RUC", t.proveedor_ruc],
     ["Registró", t.usuario_nombre],
   ].filter(([, v]) => v != null && String(v).trim() !== "");
 

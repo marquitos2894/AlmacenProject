@@ -10,6 +10,7 @@ import productos from "./views/productos.js";
 import productoAlmacen from "./views/productoAlmacen.js";
 import movimientos from "./views/movimientos.js";
 import unidadesOperativas from "./views/unidadesOperativas.js";
+import proveedores from "./views/proveedores.js";
 import equipoUnidadOperativa from "./views/equipoUnidadOperativa.js";
 
 const NAV = [
@@ -29,6 +30,7 @@ const NAV = [
       { id: "unidades", label: "Unidades de medida", icon: "📏", view: unidadesMedida },
       { id: "estados", label: "Estados", icon: "🏷️", view: estados },
       { id: "equipos", label: "Equipos", icon: "⚙️", view: equipos },
+      { id: "proveedores", label: "Proveedores", icon: "🏭", view: proveedores },
     ],
   },
   {

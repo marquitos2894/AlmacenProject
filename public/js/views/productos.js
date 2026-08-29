@@ -15,6 +15,12 @@ export default createCrudView({
   singular: "producto",
   orderBy: "nombre",
   touchUpdatedAt: true,
+  // Consumibles busca en productos; Componentes lee de la vista, que además
+  // tiene serie y código interno — buscar por esos dos ahí es lo más útil.
+  search: {
+    placeholder: "Buscar por nombre, no. de parte, marca o código de barras…",
+    fields: ["nombre", "no_parte", "marca", "codigo_barras"],
+  },
   // Dos listas separadas: el catálogo a granel y el que se sigue pieza por
   // pieza. Un trazable ES una máquina concreta (dos con series distintas son
   // dos productos), así que su lista muestra serie, código interno y estado,
@@ -29,6 +35,7 @@ export default createCrudView({
         label: "Componentes",
         hint: "se siguen por número de serie",
         table: "vw_productos_trazables",
+        searchFields: ["nombre", "no_parte", "marca", "codigo_barras", "no_serie", "codigo_interno"],
         columns: [
           { key: "nombre", label: "Nombre" },
           { key: "no_parte", label: "No. Parte" },
