@@ -1,9 +1,6 @@
 # Dependencias
 node_modules/
 
-# Credenciales locales de Supabase (usa config.example.js como plantilla)
-public/js/config.js
-
 # Herramientas de agentes IA (contenido descargado/local, no parte de la app)
 .agents/
 .codex/
