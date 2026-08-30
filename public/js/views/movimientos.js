@@ -7,6 +7,7 @@ import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
 import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
 import { renderBarcodeLabel } from "../barcode.js";
+import { botonEscanear } from "../scanner.js";
 import { icon } from "../icons.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
 
@@ -111,7 +112,10 @@ async function renderList(root, almacenId) {
     lista.appendChild(el("p", { class: "loading", text: "Cargando…" }));
 
     let q = supabase.from("vw_movimientos").select("*").eq("almacen_id", almacenId);
-    if (filtros.no_parte) q = q.ilike("busq_no_parte", `%${filtros.no_parte}%`);
+    if (filtros.no_parte) {
+      const t = filtros.no_parte.replace(/[,()*]/g, " ").trim();
+      if (t) q = q.or(`busq_no_parte.ilike.%${t}%,busq_codigo_barras.ilike.%${t}%`);
+    }
     if (filtros.nombre) q = q.ilike("busq_nombre", `%${filtros.nombre}%`);
     if (filtros.estado_id) q = q.contains("estado_ids", [Number(filtros.estado_id)]);
     q = q.order("created_at", { ascending: false }).limit(200);
@@ -146,9 +150,14 @@ async function renderList(root, almacenId) {
 function buildFiltros(estados, onChange) {
   const noParte = el("input", {
     class: "input", type: "search", id: "f-no-parte", value: filtros.no_parte,
-    placeholder: "No. de parte…", autocomplete: "off", spellcheck: "false",
+    placeholder: "No. de parte o código…", autocomplete: "off", spellcheck: "false",
     oninput: debounce((e) => { filtros.no_parte = e.target.value; onChange(); }),
   });
+  const scan = botonEscanear((codigo) => {
+    noParte.value = codigo;
+    filtros.no_parte = codigo;
+    onChange();
+  }, { texto: true, bloque: true });
   const nombre = el("input", {
     class: "input", type: "search", id: "f-nombre", value: filtros.nombre,
     placeholder: "Nombre…", autocomplete: "off",
@@ -167,9 +176,10 @@ function buildFiltros(estados, onChange) {
   ]);
 
   return el("div", { class: "filters" }, [
-    filtro("f-no-parte", "No. de parte", noParte),
+    filtro("f-no-parte", "No. de parte / código", noParte),
     filtro("f-nombre", "Nombre", nombre),
     filtro("f-estado", "Estado", estado),
+    scan ? el("div", { class: "filter" }, [el("span", { class: "filter-label", text: "Código de barras" }), scan]) : null,
   ]);
 }
 
@@ -363,12 +373,12 @@ async function renderForm(root, almacenId) {
     if (existente) {
       // Un activo fijo es una unidad física única: no se acumula ni se duplica.
       if (item.producto.es_trazable) {
-        toast(`“${item.producto.nombre}” es un activo fijo y ya está en el ticket.`, "error");
+        toast(`“${item.producto.nombre}” es un componente y ya está en el ticket.`, "error");
         return;
       }
       existente.cantidad += item.cantidad;
     } else if (item.producto.es_trazable && carrito.some((l) => l.producto.id === item.producto.id)) {
-      toast(`“${item.producto.nombre}” es un activo fijo y ya está en el ticket.`, "error");
+      toast(`“${item.producto.nombre}” es un componente y ya está en el ticket.`, "error");
       return;
     } else {
       carrito.push({ ...item });
@@ -465,7 +475,7 @@ async function renderForm(root, almacenId) {
             el("div", { class: "cart__name", text: linea.producto.nombre }),
             el("div", { class: "cart__sub" }, [
               linea.producto.no_parte ? el("span", { class: "mono", text: linea.producto.codigo_barras }) : null,
-              linea.producto.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : null,
+              linea.producto.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : null,
             ]),
           ]),
           el("td", { class: "mono", text: linea.producto.no_parte || "—" }),

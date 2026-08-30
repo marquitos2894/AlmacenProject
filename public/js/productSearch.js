@@ -8,8 +8,11 @@
 //                      concreta, así que no basta con elegir el producto.
 //
 import { supabase } from "./supabaseClient.js";
-import { el, clear, toast, buildField, readField } from "./ui.js";
+import { el, clear, toast } from "./ui.js";
 import { icon } from "./icons.js";
+import { openForm } from "./crud.js";
+import { productoFormConfig } from "./productoForm.js";
+import { botonEscanear } from "./scanner.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -26,7 +29,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
 
   const input = el("input", {
     class: "search__input", type: "search", id: "search-input",
-    placeholder: esSalida ? "No. de parte, nombre, serie o ubicación…" : "No. de parte, nombre, serie, código…",
+    placeholder: esSalida ? "No. de parte, nombre, serie, ubicación o código…" : "No. de parte, nombre, serie, código…",
     autocomplete: "off", spellcheck: "false", "aria-controls": "search-results",
   });
 
@@ -44,7 +47,14 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
     ]),
     el("div", { class: "search__bar" }, [
       el("label", { class: "sr-only", for: "search-input", text: "Buscar" }),
-      input,
+      el("div", { class: "search__bar-row" }, [
+        input,
+        // Al escanear, se rellena el campo y se dispara el mismo flujo que teclear.
+        botonEscanear((codigo) => {
+          input.value = codigo;
+          input.dispatchEvent(new Event("input"));
+        }, { texto: true }),
+      ]),
     ]),
     status,
     results,
@@ -113,7 +123,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
       .select("*")
       .eq("almacen_id", almacenId)
       .gt("stock_actual", 0)
-      .or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,no_serie.ilike.%${safe}%,ubicacion.ilike.%${safe}%`)
+      .or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,no_serie.ilike.%${safe}%,ubicacion.ilike.%${safe}%,codigo_barras.ilike.%${safe}%`)
       .order("producto_nombre")
       .limit(25);
 
@@ -177,7 +187,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
           chip("Serie", ex.no_serie),
           chip("Ubicación", ex.ubicacion),
           ex.estado_nombre ? el("span", { class: "badge badge--estado", text: ex.estado_nombre }) : null,
-          ex.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : null,
+          ex.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : null,
         ]),
       ]),
       el("div", { class: "pcard__side" }, [
@@ -312,13 +322,13 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
 
     const agregar = () => {
       if (fijoOcupado) {
-        toast(`“${p.nombre}” es un activo fijo y ya está en inventario. Solo admite salidas.`, "error");
+        toast(`“${p.nombre}” es un componente y ya está en inventario. Solo admite salidas.`, "error");
         return;
       }
       const n = Number(qty.value);
       if (!(n > 0)) { toast("La cantidad debe ser mayor que cero.", "error"); qty.focus(); return; }
       if (p.es_trazable && otroAlmacen) {
-        toast(`“${p.nombre}” es un activo fijo y está en ${otroAlmacen}. Dale salida allí primero.`, "error");
+        toast(`“${p.nombre}” es un componente y está en ${otroAlmacen}. Dale salida allí primero.`, "error");
         return;
       }
       onPick({
@@ -342,7 +352,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         el("div", { class: "pcard__name" }, [
           el("span", { class: "pcard__icon", "aria-hidden": "true", html: icon("productos", { size: 16, stroke: 1.8 }) }),
           el("span", { text: p.nombre }),
-          p.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : null,
+          p.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : null,
         ]),
         el("div", { class: "pcard__meta" }, [
           chip("No. parte", p.no_parte),
@@ -360,7 +370,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
             ))
           : null,
         fijoOcupado
-          ? el("p", { class: "pcard__warn", text: "Ya está en inventario. Un activo fijo solo vuelve a entrar si su stock queda en cero." })
+          ? el("p", { class: "pcard__warn", text: "Ya está en inventario. Un componente solo vuelve a entrar si su stock queda en cero." })
           : otroAlmacen
             ? el("p", { class: "pcard__warn", text: `Ya está en ${otroAlmacen}.` })
             : null,
@@ -390,58 +400,26 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
     return card;
   }
 
-  // ---- Sub-formulario: crear producto sin cerrar el modal
+  // ---- Alta de producto con el MISMO formulario que la vista Productos.
+  // Se reutiliza `openForm` + `productoFormConfig` para no mantener dos altas
+  // distintas: así el trazable, la unidad de medida, los equipos compatibles y
+  // el guardado de la unidad física (set_producto_unidad) funcionan igual aquí.
   function crearRapido(term) {
-    const campos = [
-      { name: "nombre", label: "Nombre", type: "text", required: true, value: term },
-      { name: "no_parte", label: "No. de parte", type: "text" },
-      // La serie ya no vive en el producto: es un dato de cada unidad física.
-      { name: "marca", label: "Marca", type: "text" },
-      { name: "codigo_barras", label: "Código de barras", type: "text", placeholder: "Se genera si lo dejas vacío…" },
-    ];
-
-    const body = el("div", { class: "subform__body" });
-    const inputs = {};
-    for (const f of campos) {
-      const { wrap, input: node } = buildField(f, f.value ?? "");
-      body.appendChild(wrap);
-      inputs[f.name] = node;
-    }
-
-    const submit = el("button", { class: "btn btn--primary", type: "submit", text: "Crear y agregar" });
-    const form = el("form", { class: "subform" }, [
-      el("h4", { class: "subform__title", text: "Crear producto nuevo" }),
-      body,
-      el("div", { class: "subform__footer" }, [
-        el("button", { class: "btn btn--ghost", type: "button", text: "Cancelar", onclick: () => buscarProductos(term) }),
-        submit,
-      ]),
-    ]);
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      submit.disabled = true;
-      submit.textContent = "Creando…";
-      try {
-        const payload = {};
-        for (const f of campos) payload[f.name] = readField(f, inputs[f.name]);
-        const { data, error } = await supabase.from("productos").insert(payload).select().single();
-        if (error) throw error;
-        // Se vuelve a la lista para que el usuario indique estado y ubicación.
-        input.value = data.nombre;
-        toast(`“${data.nombre}” creado. Indica estado y ubicación para agregarlo.`, "success");
-        buscarProductos(data.nombre);
-      } catch (err) {
-        toast(err.message || "No se pudo crear el producto.", "error");
-        submit.disabled = false;
-        submit.textContent = "Crear y agregar";
-      }
+    const cfg = {
+      ...productoFormConfig,
+      // Precarga el nombre con lo que se escribió en el buscador.
+      fields: productoFormConfig.fields.map((f) =>
+        f.name === "nombre" ? { ...f, default: term } : f
+      ),
+    };
+    openForm(cfg, null, (creado) => {
+      // openForm cierra su modal y llama aquí tras guardar: se vuelve a la lista
+      // con el producto nuevo para que el usuario le ponga estado y ubicación.
+      const nombre = creado?.nombre || term;
+      input.value = nombre;
+      toast(`“${nombre}” creado. Indica estado y ubicación para agregarlo.`, "success");
+      buscarProductos(nombre);
     });
-
-    clear(results);
-    status.textContent = "";
-    results.appendChild(form);
-    form.querySelector("input")?.focus();
   }
 
   function mostrarError(error) {

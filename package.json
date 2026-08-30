@@ -4,7 +4,7 @@
   "description": "Sistema de gestión de almacén (SPA vanilla JS + Supabase)",
   "private": true,
   "scripts": {
-    "copy-vendor": "node -e \"const f=require('fs');f.copyFileSync('node_modules/@supabase/supabase-js/dist/umd/supabase.js','public/vendor/supabase.js');f.copyFileSync('node_modules/jsbarcode/dist/JsBarcode.all.min.js','public/vendor/jsbarcode.js');console.log('vendor actualizado')\"",
+    "copy-vendor": "node -e \"const f=require('fs');f.copyFileSync('node_modules/@supabase/supabase-js/dist/umd/supabase.js','public/vendor/supabase.js');f.copyFileSync('node_modules/jsbarcode/dist/JsBarcode.all.min.js','public/vendor/jsbarcode.js');f.copyFileSync('node_modules/@zxing/library/umd/index.min.js','public/vendor/zxing.js');console.log('vendor actualizado')\"",
     "start": "serve public",
     "dev": "serve public"
   },
@@ -12,6 +12,7 @@
     "@supabase/server": "^1.4.1",
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/cli": "^4.3.3",
+    "@zxing/library": "^0.21.3",
     "jsbarcode": "^3.12.3",
     "tailwindcss": "^4.3.3"
   },

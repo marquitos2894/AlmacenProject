@@ -6,10 +6,11 @@ import { puedeEditar } from "../auth.js";
 import { mensajeError } from "../crud.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton } from "../ui.js";
 import { badgeEstado, badgeAlmacen } from "../badges.js";
+import { botonEscanear } from "../scanner.js";
 
 // Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
 // donde se ve su ubicación y se edita su estado.
-const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "" };
+const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "", codigo_barras: "" };
 
 export default {
   async render(root) {
@@ -56,6 +57,29 @@ function buildFiltros({ almacenes, estados }, onChange) {
     oninput: debounce((e) => { filtros.nombre = e.target.value; onChange(); }),
   });
 
+  // Código de barras: no hay input tecleable; se fija escaneando y se muestra
+  // como chip con "✕" para limpiarlo. Con código activo, `cargar()` consulta el
+  // detalle (vw_producto_almacen sí expone codigo_barras).
+  const celdaCodigo = el("div", {});
+  function pintarCeldaCodigo() {
+    clear(celdaCodigo);
+    if (filtros.codigo_barras) {
+      celdaCodigo.appendChild(
+        el("span", { class: "chip" }, [
+          el("span", { class: "chip__label mono", text: filtros.codigo_barras }),
+          el("button", {
+            type: "button", class: "chip__remove", "aria-label": "Quitar código de barras",
+            onclick: () => { filtros.codigo_barras = ""; pintarCeldaCodigo(); onChange(); },
+          }, "×"),
+        ])
+      );
+    } else {
+      const b = botonEscanear((codigo) => { filtros.codigo_barras = codigo.trim(); pintarCeldaCodigo(); onChange(); }, { texto: true, bloque: true });
+      celdaCodigo.appendChild(b || el("span", { class: "form-hint", text: "Escaneo no disponible en este navegador." }));
+    }
+  }
+  pintarCeldaCodigo();
+
   return el("div", { class: "filters" }, [
     el("div", { class: "filter filter--primary" }, [
       el("label", { class: "filter-label", for: "f-almacen", text: "Almacén" }), almacen,
@@ -63,6 +87,7 @@ function buildFiltros({ almacenes, estados }, onChange) {
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-no-parte", text: "No. de parte" }), noParte]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-nombre", text: "Nombre" }), nombre]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-estado", text: "Estado" }), estado]),
+    el("div", { class: "filter" }, [el("label", { class: "filter-label", text: "Código de barras" }), celdaCodigo]),
   ]);
 }
 
@@ -74,7 +99,7 @@ async function cargar(container) {
   // Estado y nombre son datos de cada existencia: la vista agregada no los
   // expone, así que con cualquiera de ellos se consulta el detalle y se agrupa
   // en el cliente. Sin ellos se usa la agregación de SQL, que es más barata.
-  const agrupaEnSql = !filtros.estado_id && !filtros.nombre;
+  const agrupaEnSql = !filtros.estado_id && !filtros.nombre && !filtros.codigo_barras;
 
   let filas;
   let error;
@@ -90,6 +115,7 @@ async function cargar(container) {
     if (filtros.estado_id) q = q.eq("estado_id", filtros.estado_id);
     if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
     if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
+    if (filtros.codigo_barras) q = q.ilike("codigo_barras", `%${filtros.codigo_barras}%`);
     const res = await q;
     error = res.error;
     filas = agrupar(res.data || []);
@@ -202,8 +228,8 @@ function verDetalle(grupo, onCambio) {
       { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "—" }) },
       { key: "stock_actual", label: "Cantidad", render: (r) => el("span", { class: "mono", text: String(r.stock_actual ?? 0) }) },
       {
-        key: "es_trazable", label: "Trazable",
-        render: (r) => (r.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : document.createTextNode("—")),
+        key: "es_trazable", label: "Componente",
+        render: (r) => (r.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : document.createTextNode("—")),
       },
     ];
 

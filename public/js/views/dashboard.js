@@ -174,7 +174,7 @@ function vistaKpis(d) {
     stat("Productos activos", fmt(d.totalProductos), `${fmt(d.consumibles)} consumibles · ${fmt(d.componentes)} componentes`),
     stat("Movimientos (30 días)", fmt(d.movs30), deltaTexto(d.movsDelta)),
     stat("Equipos", fmt(d.equiposTotal), `${fmt(d.equiposAsignados)} asignados · ${fmt(d.equiposDisponibles)} disponibles`),
-    stat("Componentes en seguimiento", fmt(d.compUnidades), `${fmt(d.componentes)} producto(s) trazables`),
+    stat("Componentes en seguimiento", fmt(d.compUnidades), `${fmt(d.componentes)} producto(s) marcados como componente`),
     stat("Almacenes", fmt(d.almacenes)),
     stat("Proveedores", fmt(d.proveedores)),
   ]);
@@ -245,7 +245,7 @@ function vistaEquipos(d) {
       () => tablaSimple(d.equiposPorUnidad, "Unidad operativa", "Equipos")
     ),
     tarjetaGrafico(
-      "Componentes por estado", "Unidades trazables individuales",
+      "Componentes por estado", "Unidades individuales por componente",
       () => barrasH(d.compPorEstado, S1),
       () => tablaSimple(d.compPorEstado, "Estado", "Unidades")
     ),

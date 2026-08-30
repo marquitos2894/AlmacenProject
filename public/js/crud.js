@@ -5,6 +5,7 @@ import {
 } from "./ui.js";
 import { icon } from "./icons.js";
 import { puedeEditar } from "./auth.js";
+import { botonEscanear } from "./scanner.js";
 
 // Crea una pantalla CRUD estándar (soft-delete) a partir de una config.
 //
@@ -99,11 +100,15 @@ function buildSearchBar(search, valor, onChange) {
     autocomplete: "off", spellcheck: "false", "aria-label": search.placeholder || "Buscar",
     oninput: debounce((e) => onChange(e.target.value), 250),
   });
+  // Botón de cámara: al escanear rellena el mismo `onChange` que teclear.
+  const scan = botonEscanear((codigo) => { input.value = codigo; onChange(codigo); });
+
   return el("div", { class: "listbar" }, [
     el("div", { class: "listbar__search" }, [
       el("span", { class: "listbar__icon", "aria-hidden": "true", html: icon("search", { size: 16, stroke: 2 }) }),
       input,
     ]),
+    scan,
   ]);
 }
 
@@ -407,7 +412,9 @@ async function openForm(config, record, rerender, segmentoDefault) {
       invalidarOpciones();
       toast(isEdit ? "Registro actualizado." : "Registro creado.", "success");
       close();
-      rerender();
+      // Se pasa lo guardado por si quien abrió el formulario lo necesita (p. ej.
+      // el buscador de Movimientos, que reabre la lista con el producto nuevo).
+      rerender(saved);
     },
   });
 }
@@ -435,10 +442,10 @@ async function softDelete(config, record, rerender) {
 const UNICIDAD = {
   uq_producto_unidad_no_serie: "Ya existe una unidad con ese número de serie. Cada unidad física lleva una serie distinta.",
   uq_producto_unidad_codigo_interno: "Ya existe una unidad con ese código interno.",
-  uq_productos_no_parte_consumible: "Ya existe un producto con ese número de parte. Solo los trazables pueden repetirlo.",
+  uq_productos_no_parte_consumible: "Ya existe un producto con ese número de parte. Solo los componentes pueden repetirlo.",
   productos_codigo_barras_key: "Ya existe un producto con ese código de barras.",
   unidades_medida_codigo_key: "Ya existe una unidad de medida con ese código.",
-  uq_producto_almacen_trazable: "Ese artículo trazable ya tiene existencia registrada; no puede duplicarse.",
+  uq_producto_almacen_trazable: "Ese componente ya tiene existencia registrada; no puede duplicarse.",
   uq_producto_almacen_grano: "Ya existe una existencia con ese estado y esa ubicación.",
   uq_euo_codigo_asignado_vigente: "Otro equipo ya tiene ese código asignado en esa unidad operativa.",
   uq_euo_asignacion_abierta: "Ese equipo ya tiene una asignación vigente. Ciérrala con una fecha de fin antes de reasignarlo.",

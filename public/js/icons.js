@@ -26,6 +26,7 @@ const PATHS = {
   deactivate: '<path d="M12 4v8"/><path d="M6.5 7a7 7 0 1 0 11 0"/>',
   history: '<path d="M3 12a9 9 0 1 0 4-7.5"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M4 12h16"/>',
   wrench: '<path d="M15.4 5.4a4.5 4.5 0 0 0-5.9 5.9l-5 5a1.6 1.6 0 0 0 2.3 2.3l5-5a4.5 4.5 0 0 0 5.9-5.9l-2.5 2.5-2.1-.4-.4-2.1 2.7-2.8Z"/>',
   ticket: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/>',
   table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>',

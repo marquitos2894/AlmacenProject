@@ -740,6 +740,9 @@ select.input:not([multiple]) {
 .modal--search { max-width: 780px; height: min(88vh, 760px); }
 .modal__eyebrow { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
 .search__bar { padding: 16px 20px 10px; }
+.search__bar-row { display: flex; gap: 10px; align-items: stretch; }
+.search__bar-row .search__input { flex: 1; min-width: 0; }
+.search__bar-row .btn { flex-shrink: 0; }
 .search__input {
   width: 100%; padding: 14px 16px; font-size: 17px; font-family: inherit;
   border: 2px solid var(--border); border-radius: var(--radius-sm);
@@ -753,6 +756,28 @@ select.input:not([multiple]) {
 .search__footer {
   display: flex; align-items: center; justify-content: center; gap: 10px;
   padding-top: 14px; margin-top: 6px; border-top: 1px solid var(--border);
+}
+
+/* ------------------------------------------------- Escáner de códigos */
+.modal--scanner { max-width: 460px; }
+.scanner__body {
+  position: relative; margin: 4px 20px 0;
+  border-radius: var(--radius-sm); overflow: hidden; background: #000;
+}
+.scanner__video {
+  display: block; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh;
+  object-fit: cover; background: #000;
+}
+/* Retícula: recuadro central translúcido que guía el encuadre. */
+.scanner__frame {
+  position: absolute; inset: 18% 12%;
+  border: 2px solid rgba(255, 255, 255, .9); border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+.scanner__actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 20px 18px;
 }
 
 .pcard {

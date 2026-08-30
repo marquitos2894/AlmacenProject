@@ -11,6 +11,7 @@ import { openProductSearch } from "../productSearch.js";
 import { renderBarcodeLabel } from "../barcode.js";
 import { mensajeError } from "../crud.js";
 import { badgeAlmacen, badgeEstado } from "../badges.js";
+import { botonEscanear } from "../scanner.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
@@ -63,9 +64,14 @@ function buildFiltros(almacenes, onChange) {
   ]);
   const busca = el("input", {
     class: "input", type: "search", id: "f-busca", value: filtros.q,
-    placeholder: "No. de parte o nombre…", autocomplete: "off", spellcheck: "false",
+    placeholder: "No. de parte, nombre o código…", autocomplete: "off", spellcheck: "false",
     oninput: debounce((e) => { filtros.q = e.target.value; onChange(); }),
   });
+  const scan = botonEscanear((codigo) => {
+    busca.value = codigo;
+    filtros.q = codigo;
+    onChange();
+  }, { texto: true, bloque: true });
 
   return el("div", { class: "filters" }, [
     el("div", { class: "filter filter--primary" }, [
@@ -74,6 +80,7 @@ function buildFiltros(almacenes, onChange) {
     el("div", { class: "filter" }, [
       el("label", { class: "filter-label", for: "f-busca", text: "Producto" }), busca,
     ]),
+    scan ? el("div", { class: "filter" }, [el("span", { class: "filter-label", text: "Código de barras" }), scan]) : null,
   ]);
 }
 
@@ -88,7 +95,7 @@ async function cargar(container) {
   }
   if (filtros.q) {
     const safe = filtros.q.replace(/[,()*]/g, " ").trim();
-    if (safe) q = q.or(`busq_no_parte.ilike.%${safe}%,busq_nombre.ilike.%${safe}%`);
+    if (safe) q = q.or(`busq_no_parte.ilike.%${safe}%,busq_nombre.ilike.%${safe}%,busq_codigo_barras.ilike.%${safe}%`);
   }
   q = q.order("created_at", { ascending: false }).limit(200);
 
@@ -312,7 +319,7 @@ async function renderForm(root) {
               linea.producto.no_parte
                 ? el("span", { class: "mono", text: linea.producto.codigo_barras || linea.producto.no_parte })
                 : null,
-              linea.producto.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : null,
+              linea.producto.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : null,
             ]),
           ]),
           el("td", { class: "mono", text: linea.producto.no_parte || "—" }),
@@ -342,7 +349,7 @@ async function renderForm(root) {
     if (traz.length) {
       resumen.appendChild(
         el("p", { class: "notice", role: "status" },
-          `Componentes trazables (${[...new Set(traz)].join(", ")}): se transfieren completos y su existencia cambia de almacén.`)
+          `Componentes (${[...new Set(traz)].join(", ")}): se transfieren completos y su existencia cambia de almacén.`)
       );
     }
 
