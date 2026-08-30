@@ -6,6 +6,13 @@ export function getCurrentUsuario() {
   return currentUsuario;
 }
 
+// ¿La sesión puede escribir? Refleja lo que impone la RLS: solo el rol
+// 'lector' está restringido; sin fila sincronizada se asume que sí (igual que
+// la función puede_editar() de la base).
+export function puedeEditar() {
+  return currentUsuario?.rol !== "lector";
+}
+
 export async function getSession() {
   const { data } = await supabase.auth.getSession();
   return data.session;

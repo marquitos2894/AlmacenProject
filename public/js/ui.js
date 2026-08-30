@@ -1,4 +1,5 @@
 // Helpers de interfaz: creación de elementos, toasts, modales, tablas y formularios.
+import { icon } from "./icons.js";
 
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -48,7 +49,7 @@ export function toast(message, type = "info") {
 // ---------------------------------------------------------------- Modal
 // readOnly: para modales de consulta (ticket, detalle) — un solo botón Cerrar.
 // actions: botones extra en el pie, p. ej. [{ label: "Imprimir", onClick }].
-export function openModal({ title, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [] }) {
+export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [] }) {
   const overlay = el("div", { class: "modal-overlay" });
   const closeBtn = el("button", { class: "modal__close", type: "button", html: "&times;", "aria-label": "Cerrar" });
   const form = el("form", { class: "modal__form" });
@@ -68,7 +69,13 @@ export function openModal({ title, body, onSubmit, submitLabel = "Guardar", size
   form.appendChild(footer);
 
   const modal = el("div", { class: `modal ${size ? `modal--${size}` : ""}` }, [
-    el("div", { class: "modal__header" }, [el("h3", { class: "modal__title", text: title }), closeBtn]),
+    el("div", { class: "modal__header" }, [
+      el("div", { class: "modal__heading" }, [
+        el("h3", { class: "modal__title", text: title }),
+        subtitle ? el("p", { class: "modal__subtitle", text: subtitle }) : null,
+      ]),
+      closeBtn,
+    ]),
     form,
   ]);
   overlay.appendChild(modal);
@@ -358,8 +365,23 @@ export function buildField(field, value) {
   } else if (field.type === "checklist") {
     input = buildSearchMulti(field, id, v);
   } else if (field.type === "checkbox") {
-    input = el("input", { id, name: field.name, type: "checkbox", class: "checkbox" });
+    // Interruptor: el <input> real sigue siendo la casilla (lo lee readField y
+    // lo observan los campos condicionales); la pista visual es el <span>.
+    input = el("input", { id, name: field.name, type: "checkbox", class: "switch__input" });
     input.checked = v === true || v === "true";
+    const wrap = el("div", { class: "form-row form-row--switch" }, [
+      el("div", { class: "switch-field" }, [
+        el("label", { class: "switch", for: id }, [
+          input,
+          el("span", { class: "switch__track", "aria-hidden": "true" }),
+        ]),
+        el("div", { class: "switch-field__text" }, [
+          el("label", { class: "form-label", for: id, text: field.label }),
+          field.hint ? el("small", { class: "form-hint", text: field.hint }) : null,
+        ]),
+      ]),
+    ]);
+    return { wrap, input };
   } else {
     input = el("input", {
       id, name: field.name, class: "input",
@@ -444,8 +466,17 @@ export function buildTable(columns, rows, actions) {
   return el("div", { class: "table-wrap" }, [el("table", { class: "table" }, [thead, body])]);
 }
 
-export function iconButton(label, cls, onClick) {
-  return el("button", { class: `btn btn--sm ${cls}`, type: "button", text: label, onclick: onClick });
+// `iconName` (opcional) lo convierte en un botón cuadrado con solo el icono; la
+// etiqueta pasa a tooltip y a aria-label. Sin él, se comporta como antes.
+export function iconButton(label, cls, onClick, iconName) {
+  if (!iconName) {
+    return el("button", { class: `btn btn--sm ${cls}`, type: "button", text: label, onclick: onClick });
+  }
+  return el("button", {
+    class: `btn btn--sm btn--icon ${cls}`, type: "button",
+    onclick: onClick, title: label, "aria-label": label,
+    html: icon(iconName, { size: 15, stroke: 1.8 }),
+  });
 }
 
 // ------------------------------------------------------------ Impresión

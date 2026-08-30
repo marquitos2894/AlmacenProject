@@ -1,32 +1,13 @@
-import { createCrudView } from "../crud.js";
-import { el } from "../ui.js";
-
-// Asignaciones de equipos a unidades operativas. Es un historial: una fila
+// Config del formulario de asignación de un equipo a una unidad operativa.
+// La vista Equipos la pasa a `openForm` (crud.js) para crear y editar
+// asignaciones; la tabla `equipo_unidad_operativa` es un historial (una fila
 // sin fecha de fin es la asignación vigente, y la base impide que un mismo
-// equipo tenga dos abiertas a la vez.
-export default createCrudView({
+// equipo tenga dos abiertas a la vez).
+export const asignacionConfig = {
   table: "equipo_unidad_operativa",
   title: "Equipos por unidad operativa",
-  singular: "asignación",
-  orderBy: "fecha_inicio",
+  singular: "asignación de equipo",
   touchUpdatedAt: true,
-  columns: [
-    { key: "equipo_id", label: "Equipo" },
-    { key: "unidad_operativa_id", label: "Unidad operativa" },
-    {
-      key: "codigo_asignado", label: "Código asignado",
-      render: (r) => el("span", { class: "mono", text: r.codigo_asignado || "—" }),
-    },
-    { key: "fecha_inicio", label: "Desde", render: (r) => fecha(r.fecha_inicio) },
-    {
-      key: "fecha_fin", label: "Hasta",
-      render: (r) => r.fecha_fin
-        ? fecha(r.fecha_fin)
-        : el("span", { class: "badge badge--in", text: "Vigente" }),
-    },
-    { key: "estado_id", label: "Estado" },
-    { key: "observacion", label: "Observación" },
-  ],
   fields: [
     {
       name: "equipo_id", label: "Equipo", type: "select", required: true,
@@ -59,11 +40,4 @@ export default createCrudView({
     },
     { name: "observacion", label: "Observación", type: "textarea" },
   ],
-});
-
-function fecha(f) {
-  if (!f) return "—";
-  const [y, m, d] = String(f).slice(0, 10).split("-").map(Number);
-  return new Intl.DateTimeFormat(navigator.language || "es-MX", { dateStyle: "medium" })
-    .format(new Date(y, m - 1, d));
-}
+};

@@ -2,10 +2,14 @@
 // Vista agrupada por no_parte (la suma la hace SQL) y modal con el desglose
 // de series. El stock se modifica únicamente desde Movimientos.
 import { supabase } from "../supabaseClient.js";
+import { puedeEditar } from "../auth.js";
 import { mensajeError } from "../crud.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton } from "../ui.js";
+import { badgeEstado, badgeAlmacen } from "../badges.js";
 
-const filtros = { almacen_id: "", no_parte: "", nombre: "", no_serie: "", estado_id: "" };
+// Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
+// donde se ve su ubicación y se edita su estado.
+const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "" };
 
 export default {
   async render(root) {
@@ -14,9 +18,11 @@ export default {
       el("div", { class: "page-header" }, [
         el("div", {}, [
           el("h2", { class: "page-title", text: "Stock por almacén" }),
-          el("p", { class: "page-subtitle", text: "Consulta de existencias, agrupadas por número de parte." }),
+          el("p", { class: "page-subtitle", text: "Consumibles en existencia, agrupados por número de parte." }),
         ]),
-        el("a", { class: "btn btn--ghost", href: "#/movimientos", text: "Registrar un movimiento" }),
+        puedeEditar()
+          ? el("a", { class: "btn btn--ghost", href: "#/movimientos", text: "Registrar un movimiento" })
+          : null,
       ])
     );
 
@@ -49,11 +55,6 @@ function buildFiltros({ almacenes, estados }, onChange) {
     placeholder: "Nombre…", autocomplete: "off",
     oninput: debounce((e) => { filtros.nombre = e.target.value; onChange(); }),
   });
-  const noSerie = el("input", {
-    class: "input", type: "search", id: "f-no-serie", value: filtros.no_serie,
-    placeholder: "No. de serie…", autocomplete: "off", spellcheck: "false",
-    oninput: debounce((e) => { filtros.no_serie = e.target.value; onChange(); }),
-  });
 
   return el("div", { class: "filters" }, [
     el("div", { class: "filter filter--primary" }, [
@@ -61,7 +62,6 @@ function buildFiltros({ almacenes, estados }, onChange) {
     ]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-no-parte", text: "No. de parte" }), noParte]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-nombre", text: "Nombre" }), nombre]),
-    el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-no-serie", text: "No. de serie" }), noSerie]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-estado", text: "Estado" }), estado]),
   ]);
 }
@@ -71,27 +71,25 @@ async function cargar(container) {
   clear(container);
   container.appendChild(el("p", { class: "loading", text: "Cargando…" }));
 
-  // Estado, nombre y serie son datos de cada existencia: la vista agregada
-  // no los expone, así que con cualquiera de ellos se consulta el detalle y
-  // se agrupa en el cliente. Sin ellos se usa la agregación de SQL, que es
-  // más barata.
-  const agrupaEnSql = !filtros.estado_id && !filtros.nombre && !filtros.no_serie;
+  // Estado y nombre son datos de cada existencia: la vista agregada no los
+  // expone, así que con cualquiera de ellos se consulta el detalle y se agrupa
+  // en el cliente. Sin ellos se usa la agregación de SQL, que es más barata.
+  const agrupaEnSql = !filtros.estado_id && !filtros.nombre;
 
   let filas;
   let error;
   if (agrupaEnSql) {
-    let q = supabase.from("vw_stock_agrupado").select("*");
+    let q = supabase.from("vw_stock_agrupado").select("*").eq("es_trazable", false);
     if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
     if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
     q = q.order("almacen_nombre").order("no_parte");
     ({ data: filas, error } = await q);
   } else {
-    let q = supabase.from("vw_producto_almacen").select("*");
+    let q = supabase.from("vw_producto_almacen").select("*").eq("es_trazable", false);
     if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
     if (filtros.estado_id) q = q.eq("estado_id", filtros.estado_id);
     if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
     if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
-    if (filtros.no_serie) q = q.ilike("no_serie", `%${filtros.no_serie}%`);
     const res = await q;
     error = res.error;
     filas = agrupar(res.data || []);
@@ -104,7 +102,7 @@ async function cargar(container) {
   }
 
   const columnas = [
-    { key: "almacen_nombre", label: "Almacén" },
+    { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
     { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
     { key: "producto_nombre", label: "Producto" },
     { key: "stock_total", label: "Stock total", render: (r) => el("span", { class: "mono strong", text: String(r.stock_total ?? 0) }) },
@@ -120,7 +118,7 @@ async function cargar(container) {
 
   container.appendChild(
     buildTable(columnas, filas || [], (row) => [
-      iconButton("🔍 Ver detalles", "btn--ghost", () => verDetalle(row, () => cargar(container))),
+      iconButton("Ver detalles", "btn--ghost", () => verDetalle(row, () => cargar(container)), "search"),
     ])
   );
   container.appendChild(el("p", { class: "list-meta", text: `${(filas || []).length} grupo(s) por número de parte.` }));
@@ -175,10 +173,9 @@ function verDetalle(grupo, onCambio) {
   async function cargarDetalle() {
     let q = supabase.from("vw_producto_almacen").select("*").eq("almacen_id", grupo.almacen_id);
     q = grupo.no_parte ? q.eq("no_parte", grupo.no_parte) : q.is("no_parte", null);
-    // Se arrastran los filtros de la lista: si no, el detalle mostraría
+    // Se arrastra el filtro de estado de la lista: si no, el detalle mostraría
     // existencias que el grupo ya había descartado y los totales no cuadrarían.
     if (filtros.estado_id) q = q.eq("estado_id", filtros.estado_id);
-    if (filtros.no_serie) q = q.ilike("no_serie", `%${filtros.no_serie}%`);
     const { data, error } = await q.order("no_serie");
 
     clear(body);
@@ -190,7 +187,7 @@ function verDetalle(grupo, onCambio) {
     const total = (data || []).reduce((s, r) => s + Number(r.stock_actual || 0), 0);
     body.appendChild(
       el("dl", { class: "ticket__meta" }, [
-        el("div", {}, [el("dt", { text: "Almacén" }), el("dd", { text: grupo.almacen_nombre })]),
+        el("div", {}, [el("dt", { text: "Almacén" }), el("dd", {}, [badgeAlmacen(grupo.almacen_nombre)])]),
         el("div", {}, [el("dt", { text: "Stock total" }), el("dd", { class: "mono", text: String(total) })]),
         el("div", {}, [el("dt", { text: "Existencias" }), el("dd", { class: "mono", text: String((data || []).length) })]),
       ])
@@ -200,8 +197,8 @@ function verDetalle(grupo, onCambio) {
       { key: "producto_nombre", label: "Nombre" },
       { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
       { key: "no_serie", label: "Serie", render: (r) => el("span", { class: "mono", text: r.no_serie || "—" }) },
-      { key: "estado_nombre", label: "Estado" },
-      { key: "almacen_nombre", label: "Almacén" },
+      { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
+      { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
       { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "—" }) },
       { key: "stock_actual", label: "Cantidad", render: (r) => el("span", { class: "mono", text: String(r.stock_actual ?? 0) }) },
       {
@@ -211,9 +208,9 @@ function verDetalle(grupo, onCambio) {
     ];
 
     body.appendChild(
-      buildTable(columnas, data || [], (row) => [
-        iconButton("Cambiar estado", "btn--ghost", () => cambiarEstado(row, data || [])),
-      ])
+      buildTable(columnas, data || [], puedeEditar()
+        ? (row) => [iconButton("Cambiar estado", "btn--ghost", () => cambiarEstado(row, data || []))]
+        : null)
     );
   }
 

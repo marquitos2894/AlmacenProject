@@ -4,6 +4,7 @@
 // como renglón del carrito, o como el activo referenciado en la cabecera.
 import { supabase } from "./supabaseClient.js";
 import { el, clear, openModal, buildTable, imprimirZona } from "./ui.js";
+import { badgeEstado, badgeAlmacen } from "./badges.js";
 
 export function abrirHistorial(producto) {
   const body = el("div", { class: "modal__body" }, [
@@ -72,19 +73,13 @@ export function abrirHistorial(producto) {
       { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
       { key: "tipo_movimiento", label: "Tipo", render: tipoBadge },
       { key: "cantidad", label: "Cantidad", render: (r) => num(r.cantidad) },
-      { key: "almacen_nombre", label: "Almacén" },
+      { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
       { key: "ubicacion", label: "Ubicación", render: (r) => mono(r.ubicacion) },
-      { key: "estado_nombre", label: "Estado" },
+      { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
       { key: "unidad_operativa_nombre", label: "Unidad operativa" },
       { key: "equipo_etiqueta", label: "Equipo", render: (r) => mono(r.equipo_etiqueta) },
       { key: "motivo", label: "Motivo" },
-      {
-        key: "origen", label: "Aparece como",
-        render: (r) => el("span", {
-          class: `badge ${r.origen === "Referenciado" ? "badge--estado" : "badge--inicial"}`,
-          text: r.origen,
-        }),
-      },
+
     ];
 
     hoja.appendChild(buildTable(columnas, filas, null));

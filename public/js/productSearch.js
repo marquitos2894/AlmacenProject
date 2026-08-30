@@ -9,6 +9,7 @@
 //
 import { supabase } from "./supabaseClient.js";
 import { el, clear, toast, buildField, readField } from "./ui.js";
+import { icon } from "./icons.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -168,7 +169,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
     const card = el("div", { class: "pcard", role: "option", tabindex: "0" }, [
       el("div", { class: "pcard__main" }, [
         el("div", { class: "pcard__name" }, [
-          el("span", { class: "pcard__icon", "aria-hidden": "true", text: "📦" }),
+          el("span", { class: "pcard__icon", "aria-hidden": "true", html: icon("productos", { size: 16, stroke: 1.8 }) }),
           el("span", { text: ex.producto_nombre }),
         ]),
         el("div", { class: "pcard__meta" }, [
@@ -339,7 +340,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
     }, [
       el("div", { class: "pcard__main" }, [
         el("div", { class: "pcard__name" }, [
-          el("span", { class: "pcard__icon", "aria-hidden": "true", text: "📦" }),
+          el("span", { class: "pcard__icon", "aria-hidden": "true", html: icon("productos", { size: 16, stroke: 1.8 }) }),
           el("span", { text: p.nombre }),
           p.es_trazable ? el("span", { class: "badge badge--fijo", text: "Trazable" }) : null,
         ]),

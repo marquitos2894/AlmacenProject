@@ -3,11 +3,14 @@
 //   #/movimientos/{id}         → tickets de ese almacén
 //   #/movimientos/{id}/nuevo   → capturar ticket (carrito)
 import { supabase } from "../supabaseClient.js";
-import { getCurrentUsuario } from "../auth.js";
+import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
-import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA } from "../pickerModal.js";
+import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
 import { renderBarcodeLabel } from "../barcode.js";
+import { icon } from "../icons.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
+
+const LOGO_EMPRESA = "img/logo/corimayologo.png";
 
 const filtros = { no_parte: "", nombre: "", estado_id: "" };
 
@@ -64,7 +67,7 @@ async function renderPicker(root) {
   for (const a of data) {
     grid.appendChild(
       el("a", { class: "wh-card", href: `#/movimientos/${a.id}` }, [
-        el("span", { class: "wh-card__icon", "aria-hidden": "true", text: "🏬" }),
+        el("span", { class: "wh-card__icon", "aria-hidden": "true", html: icon("almacenes", { size: 24, stroke: 1.7 }) }),
         el("span", { class: "wh-card__name", text: a.nombre }),
         el("span", { class: "wh-card__meta", text: a.ubicacion || "Sin ubicación" }),
         el("span", { class: "wh-card__count mono", text: `${conteo.get(a.id) || 0} artículos` }),
@@ -91,7 +94,9 @@ async function renderList(root, almacenId) {
         el("h2", { class: "page-title", text: "Movimientos" }),
         el("p", { class: "page-subtitle", text: `Almacén ${almacen.nombre}` }),
       ]),
-      el("a", { class: "btn btn--primary", href: `#/movimientos/${almacenId}/nuevo`, text: "+ Nuevo movimiento" }),
+      puedeEditar()
+        ? el("a", { class: "btn btn--primary", href: `#/movimientos/${almacenId}/nuevo`, text: "+ Nuevo movimiento" })
+        : null,
     ])
   );
 
@@ -125,12 +130,13 @@ async function renderList(root, almacenId) {
       { key: "productos_resumen", label: "Producto" },
       //{ key: "total_items", label: "Renglones", render: (r) => numCell(r.total_items) },
       { key: "total_cantidad", label: "Cantidad", render: (r) => numCell(r.total_cantidad) },
+      { key: "motivo", label: "Motivo" },
       //{ key: "usuario_nombre", label: "Registró" },
     ];
 
     lista.appendChild(
       buildTable(columnas, data || [], (row) => [
-        iconButton("Ver ticket", "btn--ghost", () => verTicket(row)),
+        iconButton("Ver ticket", "btn--ghost", () => verTicket(row), "ticket"),
       ])
     );
     lista.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} movimiento(s).` }));
@@ -182,6 +188,18 @@ async function renderForm(root, almacenId) {
   const almacen = await getAlmacen(almacenId);
   if (!almacen) {
     root.appendChild(el("div", { class: "alert alert--error", text: "Ese almacén no existe." }));
+    return;
+  }
+  if (!puedeEditar()) {
+    root.appendChild(
+      el("div", { class: "page-header" }, [
+        el("div", {}, [
+          el("a", { class: "backlink", href: `#/movimientos/${almacenId}`, text: "← Volver a movimientos" }),
+          el("h2", { class: "page-title", text: "Nuevo movimiento" }),
+        ]),
+      ])
+    );
+    root.appendChild(el("div", { class: "alert alert--error", text: "Tu cuenta es de solo lectura: no puedes registrar movimientos." }));
     return;
   }
 
@@ -257,24 +275,31 @@ async function renderForm(root, almacenId) {
   // ---- Referencias opcionales del ticket: a qué unidad y a qué equipo va.
   // Se eligen en un modal con filtro, no en un desplegable: estas listas
   // crecen y buscar por serie o código es más rápido que recorrerlas.
-  const referencias = { id_producto_unidad: null, id_equipo: null, id_unidad_operativa: null };
+  const referencias = { id_producto_unidad: null, id_equipo: null, id_unidad_operativa: null, id_proveedor: null };
 
   const refUnidad = buildReferencia({
-    etiqueta: "Producto Activo", icono: "🔧", textoBoton: "Elegir producto activo",
+    etiqueta: "Producto Activo", icono: "wrench", textoBoton: "Elegir producto activo",
     config: PICKER_PROD_ACTIVO,
     onElegir: (row) => { referencias.id_producto_unidad = row?.id ?? null; },
     describir: (row) => row.descripcion || row.producto_nombre,
   });
 
+  const refProveedor = buildReferencia({
+    etiqueta: "Proveedor", icono: "proveedores", textoBoton: "Elegir proveedor",
+    config: PICKER_PROVEEDOR,
+    onElegir: (row) => { referencias.id_proveedor = row?.id ?? null; },
+    describir: (row) => row.etiqueta || row.razon_social,
+  });
+
   const refEquipo = buildReferencia({
-    etiqueta: "Equipo", icono: "🚜", textoBoton: "Elegir equipo",
+    etiqueta: "Equipo", icono: "equipos", textoBoton: "Elegir equipo",
     config: PICKER_EQUIPO,
     onElegir: (row) => { referencias.id_equipo = row?.id ?? null; },
     describir: (row) => row.etiqueta || row.modelo,
   });
 
   const refUnidadOperativa = buildReferencia({
-    etiqueta: "Unidad operativa", icono: "⛏️", textoBoton: "Elegir unidad operativa",
+    etiqueta: "Unidad operativa", icono: "unidades-operativas", textoBoton: "Elegir unidad operativa",
     config: PICKER_UNIDAD_OPERATIVA,
     onElegir: (row) => { referencias.id_unidad_operativa = row?.id ?? null; },
     describir: (row) => row.etiqueta || row.nombre,
@@ -285,7 +310,7 @@ async function renderForm(root, almacenId) {
       el("h3", { class: "section-title", text: "Datos del movimiento" }),
       grid,
       bloqueInicial,
-      el("div", { class: "refs" }, [refUnidad.nodo, refEquipo.nodo, refUnidadOperativa.nodo]),
+      el("div", { class: "refs" }, [refUnidad.nodo, refProveedor.nodo, refEquipo.nodo, refUnidadOperativa.nodo]),
     ])
   );
 
@@ -511,6 +536,7 @@ async function renderForm(root, almacenId) {
         p_id_producto_unidad: referencias.id_producto_unidad,
         p_id_equipo: referencias.id_equipo,
         p_id_unidad_operativa: referencias.id_unidad_operativa,
+        p_id_proveedor: referencias.id_proveedor,
       });
       if (error) throw error;
 
@@ -553,6 +579,7 @@ async function verTicket(mov) {
   // El activo referenciado: nombre del producto + su identificación física.
   const activo = [t.unidad_producto_nombre, t.unidad_descripcion].filter(Boolean).join(" · ");
   const equipo = [t.equipo_etiqueta, t.equipo_marca].filter(Boolean).join(" · ");
+  const proveedor = [t.proveedor_codigo, t.proveedor_razon_social].filter(Boolean).join(" · ");
   const unidadOp = [t.unidad_operativa_codigo, t.unidad_operativa_nombre].filter(Boolean).join(" · ");
   const ubicacionOp = [t.unidad_operativa_proyecto, t.unidad_operativa_ubicacion, t.unidad_operativa_zona]
     .filter(Boolean).join(" · ");
@@ -563,6 +590,7 @@ async function verTicket(mov) {
     ["Almacén", t.almacen_nombre],
     ["Tipo", t.es_stock_inicial ? "Stock Inicial" : (t.tipo_movimiento === "salida" ? "Salida" : "Entrada")],
     ["Motivo", t.motivo],
+    ["Proveedor", proveedor],
     ["Producto / activo", activo],
     ["Equipo", equipo],
     ["Unidad operativa", unidadOp],
@@ -573,6 +601,7 @@ async function verTicket(mov) {
   // Todo lo que va al papel vive dentro de este contenedor.
   const hoja = el("div", { class: "ticket zona-impresion" }, [
     el("div", { class: "ticket__head" }, [
+      el("img", { class: "ticket__logo", src: LOGO_EMPRESA, alt: "Corimayo" }),
       el("p", { class: "ticket__label", text: "Folio" }),
       el("p", { class: "ticket__folio mono", text: t.folio }),
       // Dos versiones: la de pantalla sigue el tema; la de papel va en negro,
@@ -635,7 +664,7 @@ function buildReferencia({ etiqueta, icono, textoBoton, config, onElegir, descri
 
   const nodo = el("div", { class: "ref" }, [
     el("span", { class: "ref__label" }, [
-      el("span", { "aria-hidden": "true", text: icono + " " }),
+      el("span", { class: "ref__icon", "aria-hidden": "true", html: icon(icono, { size: 16, stroke: 1.8 }) }),
       el("span", { text: etiqueta }),
     ]),
     valor,

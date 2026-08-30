@@ -1,7 +1,9 @@
 import { supabase, isConfigured } from "./supabaseClient.js";
-import { getSession, signIn, signOut, ensureUsuario, onAuthChange } from "./auth.js";
+import { getSession, signIn, signOut, ensureUsuario, onAuthChange, puedeEditar } from "./auth.js";
 import { el, clear, toast } from "./ui.js";
+import { icon } from "./icons.js";
 
+import dashboard from "./views/dashboard.js";
 import unidadesMedida from "./views/unidadesMedida.js";
 import estados from "./views/estados.js";
 import equipos from "./views/equipos.js";
@@ -9,10 +11,17 @@ import almacenes from "./views/almacenes.js";
 import productos from "./views/productos.js";
 import productoAlmacen from "./views/productoAlmacen.js";
 import movimientos from "./views/movimientos.js";
+import transferencias from "./views/transferencias.js";
+import proveedores from "./views/proveedores.js";
 import unidadesOperativas from "./views/unidadesOperativas.js";
-import equipoUnidadOperativa from "./views/equipoUnidadOperativa.js";
 
 const NAV = [
+  {
+    group: "General",
+    items: [
+      { id: "dashboard", label: "Panel", view: dashboard },
+    ],
+  },
   {
     group: "Inventario",
     items: [
@@ -20,12 +29,14 @@ const NAV = [
       { id: "stock", label: "Stock por almacén", icon: "🏬", view: productoAlmacen },
 
       { id: "movimientos", label: "Movimientos", icon: "🔁", view: movimientos },
+      { id: "transferencias", label: "Transferencias", icon: "🔀", view: transferencias },
     ],
   },
   {
     group: "Catálogos",
     items: [
       { id: "almacenes", label: "Almacenes", icon: "🏢", view: almacenes },
+      { id: "proveedores", label: "Proveedores", icon: "🚚", view: proveedores },
       { id: "unidades", label: "Unidades de medida", icon: "📏", view: unidadesMedida },
       { id: "estados", label: "Estados", icon: "🏷️", view: estados },
       { id: "equipos", label: "Equipos", icon: "⚙️", view: equipos },
@@ -35,13 +46,13 @@ const NAV = [
     group: "Operaciones",
     items: [
       { id: "unidades-operativas", label: "Unidades operativas", icon: "⛏️", view: unidadesOperativas },
-      { id: "equipos-unidad", label: "Equipos por unidad", icon: "🔗", view: equipoUnidadOperativa },
     ],
   },
 ];
 
 const ROUTES = Object.fromEntries(NAV.flatMap((g) => g.items).map((i) => [i.id, i]));
-const DEFAULT_ROUTE = "productos";
+const DEFAULT_ROUTE = "dashboard";
+const LOGO_EMPRESA = "img/logo/corimayologo.png";
 
 const appRoot = document.getElementById("app");
 
@@ -116,7 +127,10 @@ function renderLogin() {
   appRoot.appendChild(
     el("div", { class: "login-screen" }, [
       el("div", { class: "login-card" }, [
-        el("div", { class: "login-brand" }, [el("span", { class: "login-logo", text: "📦" }), el("h1", { text: "Gestión de Almacén" })]),
+        el("div", { class: "login-brand" }, [
+          el("img", { class: "login-logo", src: LOGO_EMPRESA, alt: "Corimayo" }),
+          el("h1", { text: "Gestión de Almacén" }),
+        ]),
         el("p", { class: "login-sub", text: "Inicia sesión para continuar." }),
         form,
       ]),
@@ -128,24 +142,67 @@ function renderLogin() {
 function renderApp(session) {
   clear(appRoot);
 
+  // Restaura la preferencia de barra lateral colapsada (solo aplica en escritorio).
+  try {
+    document.body.classList.toggle("sidebar-collapsed", localStorage.getItem("sidebar-collapsed") === "1");
+  } catch {}
+
   const content = el("main", { class: "content", id: "content", tabindex: "-1" });
 
+  // En móvil (barra fuera de pantalla) el botón la despliega; en escritorio la
+  // colapsa y recuerda la preferencia. Lo comparten el botón de la topbar y el
+  // chevron del encabezado de la barra lateral.
+  const toggleSidebar = () => {
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      document.body.classList.toggle("sidebar-open");
+    } else {
+      const colapsada = document.body.classList.toggle("sidebar-collapsed");
+      try { localStorage.setItem("sidebar-collapsed", colapsada ? "1" : "0"); } catch {}
+    }
+  };
+
+  const cerrarSesion = async () => { await signOut(); location.hash = ""; };
+  const iniciales = (session.user.email || "?").slice(0, 2).toUpperCase();
+
   const sidebar = el("aside", { class: "sidebar" }, [
-    el("div", { class: "sidebar__brand" }, [el("span", { class: "sidebar__logo", text: "📦" }), el("span", { class: "sidebar__title", text: "Almacén" })]),
+    el("div", { class: "sidebar__brand" }, [
+      el("span", { class: "sidebar__logo" }, [
+        el("img", { src: LOGO_EMPRESA, alt: "Corimayo" }),
+      ]),
+      el("span", { class: "sidebar__brand-text" }, [
+        el("span", { class: "sidebar__title", text: "Almacén TCH" }),
+        el("span", { class: "sidebar__subtitle", text: "Gestión de inventario" }),
+      ]),
+      el("button", {
+        class: "sidebar__collapse", type: "button",
+        "aria-label": "Ocultar o mostrar el menú",
+        html: icon("chevron-left", { size: 16, stroke: 2 }),
+        onclick: toggleSidebar,
+      }),
+    ]),
     el("nav", { class: "nav" }, NAV.map(buildNavGroup)),
+    el("div", { class: "sidebar__user" }, [
+      el("span", { class: "sidebar__avatar", text: iniciales }),
+      el("span", { class: "sidebar__user-info" }, [
+        el("span", { class: "sidebar__user-name", text: session.user.email }),
+        puedeEditar() ? null : el("span", { class: "sidebar__role", text: "Solo lectura" }),
+      ]),
+      el("button", {
+        class: "sidebar__logout", type: "button", text: "Salir",
+        "aria-label": "Cerrar sesión",
+        onclick: cerrarSesion,
+      }),
+    ]),
   ]);
 
   const topbar = el("header", { class: "topbar" }, [
     el("button", {
-      class: "topbar__menu", type: "button", text: "☰",
-      "aria-label": "Abrir menú de navegación",
-      onclick: () => document.body.classList.toggle("sidebar-open"),
+      class: "topbar__menu", type: "button",
+      "aria-label": "Mostrar u ocultar el menú de navegación",
+      html: icon("menu", { size: 18, stroke: 1.9 }),
+      onclick: toggleSidebar,
     }),
     el("div", { class: "topbar__title", id: "page-title", text: "" }),
-    el("div", { class: "topbar__user" }, [
-      el("span", { class: "topbar__email", text: session.user.email }),
-      el("button", { class: "btn btn--ghost btn--sm", text: "Salir", onclick: async () => { await signOut(); location.hash = ""; } }),
-    ]),
   ]);
 
   // El href no navega: cambiar el hash rompería el router, así que se
@@ -178,7 +235,7 @@ function buildNavGroup(group) {
     el("div", { class: "nav__group-label", text: group.group }),
     ...group.items.map((item) =>
       el("a", { class: "nav__item", href: `#/${item.id}`, dataset: { route: item.id } }, [
-        el("span", { class: "nav__icon", "aria-hidden": "true", text: item.icon }),
+        el("span", { class: "nav__icon", "aria-hidden": "true", html: icon(item.id, { size: 19 }) }),
         el("span", { text: item.label }),
       ])
     ),

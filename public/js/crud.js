@@ -3,6 +3,8 @@ import {
   el, clear, toast, openModal, confirmDialog,
   buildField, readField, buildTable, iconButton,
 } from "./ui.js";
+import { icon } from "./icons.js";
+import { puedeEditar } from "./auth.js";
 
 // Crea una pantalla CRUD estándar (soft-delete) a partir de una config.
 //
@@ -25,19 +27,44 @@ import {
 // Cada opción puede además leer de otra fuente y mostrar otras columnas
 // (`table` y `columns`), útil cuando una pestaña necesita datos unidos de
 // otra tabla. Guardar y desactivar siguen yendo a `config.table`.
+//
+// `search` (opcional) añade una barra de búsqueda sobre la lista:
+// { fields: ['nombre', 'no_parte'], placeholder?: '…' }. Filtra con ilike sobre
+// esas columnas (deben existir en todas las fuentes de las pestañas).
+//
+// Una opción de `segments` puede además traer `card: (row, ctx) => Node` (junto
+// con `columns`): la lista de esa pestaña se dibuja como cuadrícula de tarjetas
+// y aparece un conmutador "Ver tabla / Ver tarjetas". `ctx` = { rerender,
+// editar(row), desactivar(row), editable }.
 export function createCrudView(config) {
   let segmentoActivo = config.segments?.options?.[0]?.value;
+  let termino = "";
+  let vistaTarjetas = true;
 
   return {
     async render(root) {
       clear(root);
+      const rerender = () => this.render(root);
+      const opcion = config.segments?.options?.find((o) => o.value === segmentoActivo);
+
+      // Conmutador tarjetas/tabla cuando la pestaña activa define ambas.
+      const puedeTarjetas = !!(opcion?.card && opcion?.columns);
+      const toggle = puedeTarjetas
+        ? el("button", {
+            class: "btn btn--ghost", type: "button",
+            html: `${icon(vistaTarjetas ? "table" : "grid", { size: 15, stroke: 1.9 })}<span>${vistaTarjetas ? "Ver tabla" : "Ver tarjetas"}</span>`,
+            onclick: () => { vistaTarjetas = !vistaTarjetas; rerender(); },
+          })
+        : null;
+      const mostrarTarjetas = puedeTarjetas && vistaTarjetas;
+
       // Al crear desde una pestaña, el registro nace con ese tipo: pulsar
       // "Nuevo" en Trazables no debería dar de alta un consumible.
       root.appendChild(
-        buildHeader(config, () => openForm(config, null, () => this.render(root), segmentoActivo))
+        buildHeader(config, () => openForm(config, null, rerender, segmentoActivo), toggle)
       );
 
-      const listContainer = el("div", { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
+      const listContainer = el("div", mostrarTarjetas ? {} : { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
 
       if (config.segments) {
         root.appendChild(
@@ -48,45 +75,98 @@ export function createCrudView(config) {
         );
       }
 
-      const opcion = config.segments?.options?.find((o) => o.value === segmentoActivo);
+      if (config.search) {
+        root.appendChild(
+          buildSearchBar(config.search, termino, (valor) => {
+            termino = valor;
+            // Solo se refresca la lista: reconstruir la barra le quitaría el
+            // foco al usuario a cada tecla.
+            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas);
+          })
+        );
+      }
+
       root.appendChild(listContainer);
-      await refreshList(config, listContainer, () => this.render(root), segmentoActivo, opcion);
+      await refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas);
     },
   };
 }
 
-function buildSegments(segments, activo, onChange) {
+function buildSearchBar(search, valor, onChange) {
+  const input = el("input", {
+    class: "listbar__input", type: "search", value: valor,
+    placeholder: search.placeholder || "Buscar…",
+    autocomplete: "off", spellcheck: "false", "aria-label": search.placeholder || "Buscar",
+    oninput: debounce((e) => onChange(e.target.value), 250),
+  });
+  return el("div", { class: "listbar" }, [
+    el("div", { class: "listbar__search" }, [
+      el("span", { class: "listbar__icon", "aria-hidden": "true", html: icon("search", { size: 16, stroke: 2 }) }),
+      input,
+    ]),
+  ]);
+}
+
+function debounce(fn, ms = 250) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+export function buildSegments(segments, activo, onChange) {
   const grupo = el("div", {
     class: "segments", role: "tablist",
     "aria-label": segments.label || "Filtrar lista",
   });
-  for (const opt of segments.options) {
-    const seleccionado = opt.value === activo;
-    grupo.appendChild(
-      el("button", {
-        type: "button", class: `segments__btn${seleccionado ? " segments__btn--on" : ""}`,
-        role: "tab", "aria-selected": seleccionado ? "true" : "false",
-        onclick: () => { if (!seleccionado) onChange(opt.value); },
-      }, [
-        el("span", { text: opt.label }),
-        opt.hint ? el("span", { class: "segments__hint", text: opt.hint }) : null,
-      ])
-    );
+
+  // La pestaña activa se guarda dentro del propio control y las clases se
+  // repintan al cambiar. Así funciona igual tanto si quien llama vuelve a
+  // renderar todo (crud.js) como si solo refresca la lista de debajo
+  // (Stock por almacén): sin esto, el botón que arrancó activo quedaba
+  // “congelado” y dejaba de responder al volver a él.
+  let actual = activo;
+  const botones = segments.options.map((opt) => {
+    const btn = el("button", {
+      type: "button", class: "segments__btn", role: "tab",
+      onclick: () => {
+        if (opt.value === actual) return;
+        actual = opt.value;
+        sincronizar();
+        onChange(opt.value);
+      },
+    }, [
+      el("span", { text: opt.label }),
+      opt.hint ? el("span", { class: "segments__hint", text: opt.hint }) : null,
+    ]);
+    grupo.appendChild(btn);
+    return { btn, value: opt.value };
+  });
+
+  function sincronizar() {
+    for (const { btn, value } of botones) {
+      const on = value === actual;
+      btn.classList.toggle("segments__btn--on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    }
   }
+  sincronizar();
+
   return grupo;
 }
 
-function buildHeader(config, onNew) {
+function buildHeader(config, onNew, extra) {
   return el("div", { class: "page-header" }, [
     el("div", {}, [
       el("h2", { class: "page-title", text: config.title }),
       el("p", { class: "page-subtitle", text: `Mantenimiento de ${config.singular || config.title.toLowerCase()}.` }),
     ]),
-    el("button", { class: "btn btn--primary", text: "+ Nuevo", onclick: onNew }),
+    el("div", { class: "page-header__actions" }, [
+      extra || null,
+      puedeEditar() ? el("button", { class: "btn btn--primary", text: "+ Nuevo", onclick: onNew }) : null,
+    ]),
   ]);
 }
 
-async function refreshList(config, container, rerender, segmentoActivo, opcion) {
+async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false) {
   clear(container);
   // La pestaña puede leer de una vista distinta (con datos unidos); las
   // escrituras siguen yendo a config.table.
@@ -100,50 +180,120 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion) 
     query = query.eq(config.segments.key, segmentoActivo);
   }
 
-  const { data, error } = await query;
+  // Búsqueda: ilike sobre las columnas declaradas. Se sanea el término porque
+  // las comas y paréntesis son separadores en la sintaxis de .or().
+  // Una opción de segmento puede traer sus propias `searchFields` (p. ej. una
+  // pestaña que lee de una vista con columnas que la otra no tiene).
+  const busca = config.search ? termino.replace(/[,()*]/g, " ").trim() : "";
+  const searchFields = opcion?.searchFields || config.search?.fields;
+  if (busca && searchFields) {
+    query = query.or(searchFields.map((f) => `${f}.ilike.%${busca}%`).join(","));
+  }
+
+  // La lista y las etiquetas de columnas (ids -> nombres) no dependen entre
+  // sí: pedirlas a la vez recorta a un solo viaje lo que antes eran varios en
+  // fila, y este bloque se repite en cada cambio de pestaña y cada guardado.
+  const [{ data, error }, resolvers] = await Promise.all([
+    query,
+    buildColumnResolvers(config),
+  ]);
   if (error) {
     container.appendChild(el("div", { class: "alert alert--error", text: `Error al cargar: ${error.message}` }));
     return;
   }
 
-  // Resolver etiquetas de columnas que apuntan a otra tabla (para mostrar nombres en vez de ids)
-  const resolvers = await buildColumnResolvers(config);
+  const n = (data || []).length;
+  const meta = () => el("div", { class: "list-meta", text: busca ? `${n} resultado(s) para “${busca}”.` : `${n} registro(s) activos.` });
+
+  // Cuadrícula de tarjetas: la pestaña activa define `card(row, ctx)`.
+  if (mostrarTarjetas && opcion?.card) {
+    const editable = puedeEditar();
+    const ctx = {
+      rerender, editable,
+      editar: (row) => openForm(config, row, rerender),
+      desactivar: (row) => softDelete(config, row, rerender),
+    };
+    if (!n) {
+      container.appendChild(el("div", { class: "card" }, [el("div", { class: "empty-state" }, [el("p", { text: "Sin registros." })])]));
+    } else {
+      const grid = el("div", { class: "card-grid" });
+      for (const row of data) grid.appendChild(opcion.card(row, ctx));
+      container.appendChild(grid);
+    }
+    container.appendChild(meta());
+    return;
+  }
 
   const columns = (opcion?.columns || config.columns).map((c) => ({
     ...c,
     render: c.render || (resolvers[c.key] ? (row) => resolvers[c.key](row[c.key]) : undefined),
   }));
 
-  const table = buildTable(columns, data || [], (row) => [
-    ...(config.rowActions ? config.rowActions(row, rerender) : []),
-    iconButton("Editar", "btn--ghost", () => openForm(config, row, rerender)),
-    iconButton("Desactivar", "btn--danger-ghost", () => softDelete(config, row, rerender)),
-  ]);
+  const editable = puedeEditar();
+  // Sin acciones que mostrar (lector y sin acciones de solo lectura) no se
+  // dibuja la columna "Acciones".
+  const construirAcciones = (editable || config.rowActions)
+    ? (row) => [
+        ...(config.rowActions ? config.rowActions(row, rerender) : []),
+        ...(editable ? [
+          iconButton("Editar", "btn--ghost", () => openForm(config, row, rerender), "edit"),
+          iconButton("Desactivar", "btn--danger-ghost", () => softDelete(config, row, rerender), "deactivate"),
+        ] : []),
+      ]
+    : null;
+  const table = buildTable(columns, data || [], construirAcciones);
   container.appendChild(table);
-  container.appendChild(el("div", { class: "list-meta", text: `${(data || []).length} registro(s) activos.` }));
+  container.appendChild(meta());
 }
 
 async function buildColumnResolvers(config) {
+  const campos = (config.fields || []).filter((f) => f.source && f.type === "select");
+  const mapas = await Promise.all(campos.map((f) => loadOptionsMap(f.source)));
   const resolvers = {};
-  for (const field of config.fields || []) {
-    if (field.source && (field.type === "select")) {
-      const map = await loadOptionsMap(field.source);
-      resolvers[field.name] = (id) => map.get(String(id)) || (id == null ? "—" : String(id));
-    }
-  }
+  campos.forEach((field, i) => {
+    const map = mapas[i];
+    resolvers[field.name] = (id) => map.get(String(id)) || (id == null ? "—" : String(id));
+  });
   return resolvers;
 }
 
+// Los catálogos de opciones (estados, unidades de medida, modelos de equipo…)
+// cambian poco y se piden en cada re-render de la lista y en cada apertura de
+// formulario. Un cache breve en memoria evita ese ir y venir repetido; se
+// vacía en cuanto se guarda o desactiva algo, así nunca queda rancio.
+const _opcionesCache = new Map();
+const OPCIONES_TTL_MS = 60_000;
+
+function _claveSource(source) {
+  return JSON.stringify([
+    source.table,
+    source.value || "id",
+    source.label || "nombre",
+    source.filterActive !== false,
+    source.labelFn ? source.labelFn.toString() : null,
+  ]);
+}
+
+export function invalidarOpciones() {
+  _opcionesCache.clear();
+}
+
 async function loadOptions(source) {
+  const clave = _claveSource(source);
+  const cacheado = _opcionesCache.get(clave);
+  if (cacheado && Date.now() - cacheado.t < OPCIONES_TTL_MS) return cacheado.v;
+
   let q = supabase.from(source.table).select("*");
   if (source.filterActive !== false) q = q.eq("activo", true);
   q = q.order(source.label || "id", { ascending: true });
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []).map((r) => ({
+  const opciones = (data || []).map((r) => ({
     value: r[source.value || "id"],
     label: source.labelFn ? source.labelFn(r) : r[source.label || "nombre"],
   }));
+  _opcionesCache.set(clave, { t: Date.now(), v: opciones });
+  return opciones;
 }
 
 async function loadOptionsMap(source) {
@@ -154,13 +304,15 @@ async function loadOptionsMap(source) {
 async function openForm(config, record, rerender, segmentoDefault) {
   const isEdit = !!record;
 
-  // Cargar opciones de campos select/multiselect
-  const fields = [];
-  for (const f of config.fields) {
-    let field = { ...f };
-    if (f.source) field.options = await loadOptions(f.source);
-    fields.push(field);
-  }
+  // Cargar opciones de campos select/multiselect, todas a la vez: en serie,
+  // abrir el formulario esperaba un viaje a la base por cada campo con fuente.
+  const fields = await Promise.all(
+    config.fields.map(async (f) => {
+      const field = { ...f };
+      if (f.source) field.options = await loadOptions(f.source);
+      return field;
+    })
+  );
 
   // Datos relacionados (p.ej. equipos seleccionados de un producto)
   let related = {};
@@ -168,7 +320,10 @@ async function openForm(config, record, rerender, segmentoDefault) {
     related = (await config.hooks.loadRelated(record)) || {};
   }
 
-  const body = el("div", { class: "modal__body" });
+  // Rejilla de dos columnas: los campos cortos se emparejan y los largos
+  // (texto multilínea, listas, interruptor, o `full: true`) ocupan la fila.
+  const body = el("div", { class: "modal__body modal__body--grid" });
+  const anchoCompleto = new Set(["textarea", "checklist", "checkbox", "multiselect"]);
   const inputs = {};
   const wraps = {};
   for (const field of fields) {
@@ -182,6 +337,7 @@ async function openForm(config, record, rerender, segmentoDefault) {
     // -> lista de opciones marcadas). `serialize` hace el camino inverso.
     if (typeof field.parse === "function") value = field.parse(value);
     const { wrap, input } = buildField(field, value);
+    if (field.full || anchoCompleto.has(field.type)) wrap.classList.add("form-grid__full");
     body.appendChild(wrap);
     inputs[field.name] = input;
     wraps[field.name] = wrap;
@@ -213,6 +369,7 @@ async function openForm(config, record, rerender, segmentoDefault) {
 
   openModal({
     title: `${isEdit ? "Editar" : "Nuevo"} — ${config.singular || config.title}`,
+    subtitle: config.formHint,
     body,
     submitLabel: isEdit ? "Guardar cambios" : "Crear",
     onSubmit: async (close) => {
@@ -245,6 +402,9 @@ async function openForm(config, record, rerender, segmentoDefault) {
 
       if (config.hooks?.afterSave) await config.hooks.afterSave(saved, extra, { isEdit });
 
+      // Lo recién guardado puede ser opción de otro formulario (un estado, una
+      // unidad…): que el cache no lo esconda hasta que caduque.
+      invalidarOpciones();
       toast(isEdit ? "Registro actualizado." : "Registro creado.", "success");
       close();
       rerender();
@@ -265,6 +425,7 @@ async function softDelete(config, record, rerender) {
     toast(`Error: ${error.message}`, "error");
     return;
   }
+  invalidarOpciones();
   toast("Registro desactivado.", "success");
   rerender();
 }
@@ -283,6 +444,8 @@ const UNICIDAD = {
   uq_euo_asignacion_abierta: "Ese equipo ya tiene una asignación vigente. Ciérrala con una fecha de fin antes de reasignarlo.",
   uq_unidad_operativa_codigo: "Ya existe una unidad operativa con ese código.",
   uq_equipos_codigo: "Ya existe un equipo con ese código.",
+  uq_proveedores_codigo: "Ya existe un proveedor con ese código.",
+  uq_proveedores_ruc: "Ya existe un proveedor con ese RUC.",
   ck_euo_fechas: "La fecha de fin no puede ser anterior a la de inicio.",
 };
 
@@ -294,5 +457,6 @@ export function mensajeError(error) {
   return error?.message || "No se pudo guardar.";
 }
 
-// Reexport util para vistas que necesiten cargar opciones (filtros)
-export { loadOptions };
+// Reexport para vistas a medida: `loadOptions` (filtros) y el formulario /
+// borrado estándar, para no duplicar el CRUD en vistas con diseño propio.
+export { loadOptions, openForm, softDelete };

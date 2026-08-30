@@ -5,6 +5,7 @@
 // una unidad física o un equipo al ticket de movimiento.
 import { supabase } from "./supabaseClient.js";
 import { el, clear } from "./ui.js";
+import { icon } from "./icons.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -119,7 +120,7 @@ export function openPicker({ config, onPick }) {
     const card = el("div", { class: "pcard pcard--picker", role: "option", tabindex: "0" }, [
       el("div", { class: "pcard__main" }, [
         el("div", { class: "pcard__name" }, [
-          el("span", { class: "pcard__icon", "aria-hidden": "true", text: config.icono || "🔎" }),
+          el("span", { class: "pcard__icon", "aria-hidden": "true", html: icon(config.icono || "search", { size: 16, stroke: 1.8 }) }),
           el("span", { text: config.principal(row) || "(sin nombre)" }),
         ]),
         el("div", { class: "pcard__meta" },
@@ -157,7 +158,7 @@ export const PICKER_PROD_ACTIVO = {
   tabla: "vw_producto_unidad_lista",
   campos: ["descripcion", "no_serie", "codigo_interno", "producto_nombre", "no_parte", "modelo"],
   orden: "descripcion",
-  icono: "🔧",
+  icono: "wrench",
   vacio: "Todavía no hay unidades registradas.",
   principal: (r) => r.descripcion || r.producto_nombre,
   detalles: (r) => [
@@ -174,7 +175,7 @@ export const PICKER_UNIDAD_OPERATIVA = {
   tabla: "vw_unidad_operativa_lista",
   campos: ["codigo", "nombre", "proyecto", "ubicacion", "zona"],
   orden: "nombre",
-  icono: "⛏️",
+  icono: "unidades-operativas",
   vacio: "Todavía no hay unidades operativas registradas.",
   principal: (r) => r.etiqueta || r.nombre,
   detalles: (r) => [
@@ -185,13 +186,30 @@ export const PICKER_UNIDAD_OPERATIVA = {
   ],
 };
 
+export const PICKER_PROVEEDOR = {
+  titulo: "Elegir proveedor",
+  placeholder: "Código, razón social, RUC, contacto…",
+  tabla: "vw_proveedores_lista",
+  campos: ["codigo", "razon_social", "ruc", "contacto"],
+  orden: "razon_social",
+  icono: "proveedores",
+  vacio: "Todavía no hay proveedores registrados.",
+  principal: (r) => r.etiqueta || r.razon_social || "(sin nombre)",
+  detalles: (r) => [
+    { label: "RUC", valor: r.ruc },
+    { label: "Contacto", valor: r.contacto },
+    { label: "Teléfono", valor: r.telefono },
+    { label: "Email", valor: r.email },
+  ],
+};
+
 export const PICKER_EQUIPO = {
   titulo: "Elegir equipo",
   placeholder: "Modelo, serie, marca, descripción…",
   tabla: "vw_equipos_lista",
   campos: ["modelo", "no_serie", "marca", "descripcion", "unidad_actual"],
   orden: "modelo",
-  icono: "🚜",
+  icono: "equipos",
   vacio: "Todavía no hay equipos registrados.",
   principal: (r) => r.etiqueta || r.modelo || "(sin modelo)",
   detalles: (r) => [
