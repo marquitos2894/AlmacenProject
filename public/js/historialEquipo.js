@@ -63,6 +63,8 @@ export function abrirHistorialEquipo(equipo, asignaciones, ordenUnidadIds = [], 
       key: "fecha_fin", label: "Hasta",
       render: (r) => r.fecha_fin ? fecha(r.fecha_fin) : el("span", { class: "badge badge--in", text: "Vigente" }),
     },
+    { key: "horometro_inicial", label: "Horóm. inicial", render: (r) => el("span", { class: "mono", text: r.horometro_inicial ?? "—" }) },
+    { key: "horometro_final", label: "Horóm. final", render: (r) => el("span", { class: "mono", text: r.horometro_final ?? "—" }) },
     { key: "observacion", label: "Observación" },
   ];
 

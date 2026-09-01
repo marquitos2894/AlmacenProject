@@ -311,12 +311,17 @@ async function openForm(config, record, rerender, segmentoDefault) {
 
   // Cargar opciones de campos select/multiselect, todas a la vez: en serie,
   // abrir el formulario esperaba un viaje a la base por cada campo con fuente.
+  // `hideOnEdit`: el campo solo aparece al crear (p. ej. datos de identidad que
+  // no deberían tocarse luego). Al editar ni se pinta ni entra en el payload,
+  // así el valor guardado se conserva.
   const fields = await Promise.all(
-    config.fields.map(async (f) => {
-      const field = { ...f };
-      if (f.source) field.options = await loadOptions(f.source);
-      return field;
-    })
+    config.fields
+      .filter((f) => !(isEdit && f.hideOnEdit))
+      .map(async (f) => {
+        const field = { ...f };
+        if (f.source) field.options = await loadOptions(f.source);
+        return field;
+      })
   );
 
   // Datos relacionados (p.ej. equipos seleccionados de un producto)
@@ -343,6 +348,24 @@ async function openForm(config, record, rerender, segmentoDefault) {
     if (typeof field.parse === "function") value = field.parse(value);
     const { wrap, input } = buildField(field, value);
     if (field.full || anchoCompleto.has(field.type)) wrap.classList.add("form-grid__full");
+
+    // `scan: true` añade un botón de cámara junto al campo: al leer un código
+    // de barras rellena el input igual que teclearlo (dispara input/change,
+    // para que showIf y la validación se enteren). Si el navegador no puede
+    // escanear, `botonEscanear` devuelve null y el campo queda como estaba.
+    if (field.scan) {
+      const btn = botonEscanear((codigo) => {
+        input.value = codigo;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      if (btn) {
+        const fila = el("div", { class: "field-scan" });
+        wrap.replaceChild(fila, input);
+        fila.append(input, btn);
+      }
+    }
+
     body.appendChild(wrap);
     inputs[field.name] = input;
     wraps[field.name] = wrap;
@@ -454,6 +477,7 @@ const UNICIDAD = {
   uq_proveedores_codigo: "Ya existe un proveedor con ese código.",
   uq_proveedores_ruc: "Ya existe un proveedor con ese RUC.",
   ck_euo_fechas: "La fecha de fin no puede ser anterior a la de inicio.",
+  ck_euo_horometros: "El horómetro final no puede ser menor que el inicial, y no se admiten valores negativos.",
 };
 
 export function mensajeError(error) {

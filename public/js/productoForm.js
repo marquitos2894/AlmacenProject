@@ -47,8 +47,9 @@ export const productoFormConfig = {
       label: "Código de barras",
       type: "text",
       full: true,
+      scan: true,
       placeholder: "Déjalo vacío para generarlo…",
-      hint: "Si el producto ya trae uno impreso, escríbelo. Si lo dejas vacío se genera a partir del no. de parte.",
+      hint: "Si el producto ya trae uno impreso, escríbelo o escanéalo. Si lo dejas vacío se genera a partir del no. de parte.",
     },
     {
       // Solo tiene sentido a granel: una máquina trazable es una pieza, no

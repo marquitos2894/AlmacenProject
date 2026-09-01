@@ -205,16 +205,18 @@ export const PICKER_PROVEEDOR = {
 
 export const PICKER_EQUIPO = {
   titulo: "Elegir equipo",
-  placeholder: "Modelo, serie, marca, descripción…",
+  placeholder: "Modelo, serie, marca, código asignado…",
   tabla: "vw_equipos_lista",
-  campos: ["modelo", "no_serie", "marca", "descripcion", "unidad_actual"],
+  campos: ["modelo", "no_serie", "marca", "descripcion", "unidad_actual", "codigo_asignado"],
   orden: "modelo",
   icono: "equipos",
   vacio: "Todavía no hay equipos registrados.",
+  // `etiqueta` = "modelo/serie/código asignado".
   principal: (r) => r.etiqueta || r.modelo || "(sin modelo)",
   detalles: (r) => [
     { label: "Marca", valor: r.marca },
     { label: "Serie", valor: r.no_serie },
+    { label: "Cód. asignado", valor: r.codigo_asignado },
     { label: "Unidad", valor: r.unidad_actual },
     { label: "Estado", valor: r.estado_actual },
     { label: "Descripción", valor: r.descripcion },

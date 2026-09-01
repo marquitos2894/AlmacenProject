@@ -12,8 +12,9 @@ export const asignacionConfig = {
     {
       name: "equipo_id", label: "Equipo", type: "select", required: true,
       source: {
-        table: "equipos", value: "id", label: "modelo",
-        labelFn: (r) => [r.codigo, r.modelo, r.no_serie].filter(Boolean).join(" · "),
+        table: "vw_equipos_lista", value: "id", label: "modelo",
+        // "modelo/serie/código asignado" (la vista ya arma la etiqueta).
+        labelFn: (r) => r.etiqueta || [r.modelo, r.no_serie].filter(Boolean).join("/"),
       },
     },
     {
@@ -30,8 +31,18 @@ export const asignacionConfig = {
     },
     { name: "fecha_inicio", label: "Fecha de inicio", type: "date", required: true },
     {
+      name: "horometro_inicial", label: "Horómetro inicial", type: "number",
+      placeholder: "Lectura al asignar",
+      hint: "Horas de la máquina al entrar a esta unidad. Opcional.",
+    },
+    {
       name: "fecha_fin", label: "Fecha de fin", type: "date",
       hint: "Déjala vacía mientras el equipo siga en esa unidad.",
+    },
+    {
+      name: "horometro_final", label: "Horómetro final", type: "number",
+      placeholder: "Lectura al cerrar",
+      hint: "Horas de la máquina al terminar la asignación. No puede ser menor que el inicial.",
     },
     {
       name: "estado_id", label: "Estado", type: "select",

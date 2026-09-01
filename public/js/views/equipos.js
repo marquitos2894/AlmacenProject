@@ -19,8 +19,9 @@ const CRUD = {
   title: "Equipos",
   singular: "equipo",
   fields: [
-    { name: "codigo", label: "Código", type: "text", hint: "No puede repetirse entre equipos activos." },
-    { name: "nombre", label: "Nombre", type: "text" },
+    // Identidad: solo al dar de alta. Al editar se ocultan (no se retocan).
+    { name: "codigo", label: "Código", type: "text", hideOnEdit: true, hint: "No puede repetirse entre equipos activos." },
+    { name: "nombre", label: "Nombre", type: "text", hideOnEdit: true },
     { name: "modelo", label: "Modelo", type: "text", required: true },
     { name: "marca", label: "Marca", type: "text" },
     { name: "no_serie", label: "No. de serie", type: "text" },
@@ -107,7 +108,7 @@ async function cargarDatos() {
     supabase.from("equipos").select("*").eq("activo", true).order("modelo"),
     supabase
       .from("vw_equipo_unidad_operativa")
-      .select("id, equipo_id, unidad_operativa_id, unidad_nombre, codigo_asignado, estado_id, estado_nombre, fecha_inicio, fecha_fin, observacion, vigente")
+      .select("id, equipo_id, unidad_operativa_id, unidad_nombre, codigo_asignado, estado_id, estado_nombre, fecha_inicio, fecha_fin, horometro_inicial, horometro_final, observacion, vigente")
       .order("fecha_inicio", { ascending: false }),
     supabase.from("unidad_operativa").select("id, nombre").eq("activo", true).order("nombre"),
   ]);
@@ -144,7 +145,8 @@ function filtrar(d) {
     }
     if (filtros.estado && norm(e.estado_actual).toLowerCase() !== filtros.estado.toLowerCase()) return false;
     if (q) {
-      const heno = [e.modelo, e.no_serie, e.marca, e.codigo, e.nombre].filter(Boolean).join(" ").toLowerCase();
+      const heno = [e.modelo, e.no_serie, e.marca, e.codigo, e.nombre, vig?.codigo_asignado]
+        .filter(Boolean).join(" ").toLowerCase();
       if (!heno.includes(q)) return false;
     }
     return true;

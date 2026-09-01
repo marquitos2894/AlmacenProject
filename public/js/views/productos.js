@@ -2,13 +2,37 @@ import { createCrudView } from "../crud.js";
 import { productoFormConfig } from "../productoForm.js";
 import { abrirEtiqueta } from "../barcode.js";
 import { abrirHistorial } from "../historialProducto.js";
-import { badgeEstado, badgeAlmacen } from "../badges.js";
+import { badgeEstado, badgeAlmacen, badgeChip } from "../badges.js";
 import { abrirCambioEstado } from "../cambioEstadoExistencia.js";
 import { iconButton, el } from "../ui.js";
 import { icon } from "../icons.js";
 
 // Series y códigos se leen mejor en monoespaciada, como el resto de códigos.
 const mono = (v) => el("span", { class: "mono", text: v || "—" });
+
+// Ubicación actual de un componente:
+//  - con existencia: ubicación + almacén;
+//  - sin existencia (salió por completo del inventario): dos chips con a qué
+//    unidad operativa y equipo (modelo/serie/código asignado) se fue, según su
+//    última salida (vw_productos_trazables los trae);
+//  - si nunca tuvo existencia: "Sin existencia registrada".
+function nodosUbicacionComponente(row) {
+  if (row.producto_almacen_id) {
+    return [
+      row.ubicacion ? document.createTextNode(`${row.ubicacion} `) : null,
+      badgeAlmacen(row.almacen_nombre),
+    ];
+  }
+  if (row.salida_unidad_operativa || row.salida_equipo) {
+    return [
+      el("span", { class: "loc-chips" }, [
+        row.salida_unidad_operativa ? badgeChip(row.salida_unidad_operativa) : null,
+        row.salida_equipo ? el("span", { class: "tag tag--codigo", text: row.salida_equipo }) : null,
+      ]),
+    ];
+  }
+  return [document.createTextNode("Sin existencia registrada")];
+}
 
 // Abre el modal de estado/ubicación de un componente si tiene existencia.
 function editarEstadoComponente(row, onDone) {
@@ -62,14 +86,13 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       row.no_serie ? el("div", { class: "card-tile__label", text: "N.º serie" }) : null,
       row.no_serie ? el("div", { class: "card-tile__serie mono", text: row.no_serie }) : null,
       el("div", { class: "card-tile__label", text: "Ubicación actual" }),
-      el("div", { class: "card-tile__loc" }, conExistencia
-        ? [
-            row.ubicacion ? document.createTextNode(`${row.ubicacion} `) : null,
-            badgeAlmacen(row.almacen_nombre),
-          ]
-        : [document.createTextNode("Sin existencia registrada")]),
+      el("div", { class: "card-tile__loc" }, nodosUbicacionComponente(row)),
       el("div", { class: "card-tile__badges" }, [
-        el("span", { class: "tag tag--codigo", text: `${unidades} unidad${unidades === 1 ? "" : "es"}` }),
+        // La cuenta de unidades solo tiene sentido si el componente está en
+        // inventario; sin existencia se oculta.
+        conExistencia
+          ? el("span", { class: "tag tag--codigo", text: `${unidades} unidad${unidades === 1 ? "" : "es"}` })
+          : null,
         ...compatibles.slice(0, 4).map((m) => el("span", { class: "tag tag--codigo", text: m })),
         compatibles.length > 4 ? el("span", { class: "tag tag--none", text: `+${compatibles.length - 4}` }) : null,
       ]),
@@ -113,12 +136,7 @@ export default createCrudView({
           { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
           {
             key: "ubicacion", label: "Ubicación actual",
-            render: (r) => r.producto_almacen_id
-              ? el("span", {}, [
-                  r.ubicacion ? document.createTextNode(`${r.ubicacion} `) : null,
-                  badgeAlmacen(r.almacen_nombre),
-                ])
-              : el("span", { text: "—" }),
+            render: (r) => el("span", {}, nodosUbicacionComponente(r)),
           },
           { key: "equipos_compatible", label: "Equipos compatibles" },
         ],

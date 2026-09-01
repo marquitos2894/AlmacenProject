@@ -8,6 +8,7 @@ import { openProductSearch } from "../productSearch.js";
 import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
 import { renderBarcodeLabel } from "../barcode.js";
 import { botonEscanear } from "../scanner.js";
+import { badgeEstado } from "../badges.js";
 import { icon } from "../icons.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
 
@@ -111,14 +112,16 @@ async function renderList(root, almacenId) {
     clear(lista);
     lista.appendChild(el("p", { class: "loading", text: "Cargando…" }));
 
-    let q = supabase.from("vw_movimientos").select("*").eq("almacen_id", almacenId);
+    // Un renglón por línea de producto: cada movimiento se lista individual,
+    // sin agruparse por ticket.
+    let q = supabase.from("vw_movimiento_detalle").select("*").eq("almacen_id", almacenId);
     if (filtros.no_parte) {
       const t = filtros.no_parte.replace(/[,()*]/g, " ").trim();
-      if (t) q = q.or(`busq_no_parte.ilike.%${t}%,busq_codigo_barras.ilike.%${t}%`);
+      if (t) q = q.or(`no_parte.ilike.%${t}%,codigo_barras.ilike.%${t}%`);
     }
-    if (filtros.nombre) q = q.ilike("busq_nombre", `%${filtros.nombre}%`);
-    if (filtros.estado_id) q = q.contains("estado_ids", [Number(filtros.estado_id)]);
-    q = q.order("created_at", { ascending: false }).limit(200);
+    if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
+    if (filtros.estado_id) q = q.eq("estado_id", Number(filtros.estado_id));
+    q = q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300);
 
     const { data, error } = await q;
     clear(lista);
@@ -131,16 +134,17 @@ async function renderList(root, almacenId) {
       { key: "folio", label: "Folio", render: (r) => el("span", { class: "folio-tag mono", text: r.folio }) },
       { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
       { key: "tipo_movimiento", label: "Tipo", render: tipoBadge },
-      { key: "productos_resumen", label: "Producto" },
-      //{ key: "total_items", label: "Renglones", render: (r) => numCell(r.total_items) },
-      { key: "total_cantidad", label: "Cantidad", render: (r) => numCell(r.total_cantidad) },
+      { key: "producto_nombre", label: "Producto" },
+      { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
+      { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
+      { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
       { key: "motivo", label: "Motivo" },
-      //{ key: "usuario_nombre", label: "Registró" },
     ];
 
     lista.appendChild(
       buildTable(columnas, data || [], (row) => [
-        iconButton("Ver ticket", "btn--ghost", () => verTicket(row), "ticket"),
+        iconButton("Ver ticket", "btn--ghost",
+          () => verTicket({ id: row.movimiento_id, folio: row.folio, almacen_nombre: almacen.nombre }), "ticket"),
       ])
     );
     lista.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} movimiento(s).` }));

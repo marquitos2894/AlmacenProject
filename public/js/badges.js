@@ -27,6 +27,17 @@ export function badgeEstado(nombre) {
   return el("span", { class: `badge badge--${variante}`, text: nombre });
 }
 
+// Insignia de existencias: rojo cuando no hay stock (0 o menos), verde cuando
+// lo hay. `prefijo` antepone un texto opcional, p. ej. "Stock: ".
+export function badgeStock(cantidad, { prefijo = "" } = {}) {
+  const n = Number(cantidad);
+  const valor = Number.isFinite(n) ? n : 0;
+  return el("span", {
+    class: `badge badge--${valor > 0 ? "in" : "out"}`,
+    text: `${prefijo}${valor}`,
+  });
+}
+
 // Insignia de almacén: un chip con color estable por nombre (paleta tag--c1..c8).
 // Los almacenes son un catálogo sin significado semántico ni orden fijo en cada
 // llamada, así que el color sale de un hash del nombre para que sea consistente
@@ -38,10 +49,17 @@ function hashColor(texto) {
 }
 
 export function badgeAlmacen(nombre) {
+  return badgeChip(nombre, { vacio: "Sin almacén" });
+}
+
+// Chip con color estable por texto (hash del nombre -> paleta tag--c1..c8) y
+// punto. Sirve para cualquier etiqueta de catálogo sin orden fijo: almacén,
+// unidad operativa, etc.
+export function badgeChip(nombre, { vacio = "—" } = {}) {
   const limpio = nombre == null ? "" : String(nombre).trim();
   if (!limpio) {
     return el("span", { class: "tag tag--none" }, [
-      el("span", { class: "tag__dot" }), document.createTextNode("Sin almacén"),
+      el("span", { class: "tag__dot" }), document.createTextNode(vacio),
     ]);
   }
   return el("span", { class: `tag tag--c${hashColor(limpio.toLowerCase())}` }, [

@@ -5,7 +5,7 @@ import { supabase } from "../supabaseClient.js";
 import { puedeEditar } from "../auth.js";
 import { mensajeError } from "../crud.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton } from "../ui.js";
-import { badgeEstado, badgeAlmacen } from "../badges.js";
+import { badgeEstado, badgeAlmacen, badgeStock } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
 
 // Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
@@ -131,7 +131,7 @@ async function cargar(container) {
     { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
     { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
     { key: "producto_nombre", label: "Producto" },
-    { key: "stock_total", label: "Stock total", render: (r) => el("span", { class: "mono strong", text: String(r.stock_total ?? 0) }) },
+    { key: "stock_total", label: "Stock total", render: (r) => badgeStock(r.stock_total ?? 0) },
   
     {
       key: "total_existencias", label: "Existencias",

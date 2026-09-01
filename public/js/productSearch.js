@@ -13,6 +13,7 @@ import { icon } from "./icons.js";
 import { openForm } from "./crud.js";
 import { productoFormConfig } from "./productoForm.js";
 import { botonEscanear } from "./scanner.js";
+import { badgeStock } from "./badges.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -191,7 +192,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         ]),
       ]),
       el("div", { class: "pcard__side" }, [
-        el("span", { class: "badge badge--stock", text: `Stock: ${ex.stock_actual}` }),
+        badgeStock(ex.stock_actual, { prefijo: "Stock: " }),
         el("div", { class: "pcard__actions" }, [
           qty,
           el("button", {
@@ -382,7 +383,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
       ]),
       el("div", { class: "pcard__side" }, [
         filas.length
-          ? el("span", { class: "badge badge--stock", text: `Stock: ${total}` })
+          ? badgeStock(total, { prefijo: "Stock: " })
           : el("span", { class: "badge badge--nostock", text: "Sin existencia" }),
         fijoOcupado ? null : el("div", { class: "pcard__actions" }, [
           qty,
