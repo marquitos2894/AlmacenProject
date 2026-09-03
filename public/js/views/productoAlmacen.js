@@ -131,12 +131,14 @@ async function cargar(container) {
     { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
     { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
     { key: "producto_nombre", label: "Producto" },
-    { key: "stock_total", label: "Stock total", render: (r) => badgeStock(r.stock_total ?? 0) },
-  
+    { key: "codigo_control", label: "Cód. control", render: (r) => el("span", { class: "mono", text: r.codigo_control || "—" }) },
+    { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "Sin ubicación" }) },
+    { key: "estado_nombre", label: "Estado", render: (r) => (r.estado_nombre ? badgeEstado(r.estado_nombre) : el("span", { class: "mono", text: "—" })) },
+    { key: "stock_total", label: "Stock", render: (r) => badgeStock(r.stock_total ?? 0) },
     {
-      key: "total_existencias", label: "Ubicaciones",
+      key: "total_existencias", label: "Existencias",
       render: (r) => el("span", {
-        class: "mono", title: "Renglones de stock: un producto puede estar dividido por estado y ubicación",
+        class: "mono", title: "Renglones de stock que componen esta fila",
         text: String(r.total_existencias ?? r.total_series ?? 0),
       }),
     },
@@ -147,23 +149,43 @@ async function cargar(container) {
       iconButton("Ver detalles", "btn--ghost", () => verDetalle(row, () => cargar(container)), "search"),
     ])
   );
-  container.appendChild(el("p", { class: "list-meta", text: `${(filas || []).length} grupo(s) por número de parte.` }));
+  container.appendChild(el("p", { class: "list-meta", text: `${(filas || []).length} fila(s) de stock.` }));
+}
+
+// Misma normalización que las columnas generadas `ubicacion_norm` /
+// `codigo_control_norm` de la base: así el cliente agrupa igual que SQL.
+function norm(v) {
+  return ((v ?? "") + "").trim().toUpperCase() || null;
 }
 
 // Agrupación en cliente (cuando hay filtros a nivel de ítem).
-// Replica el criterio de vw_stock_agrupado: total_series cuenta artículos
-// físicos distintos y total_existencias cuenta renglones de stock.
+// Replica el grano de vw_stock_agrupado: mismo n.º de parte + ubicación +
+// estado + código de control. total_series cuenta artículos físicos distintos;
+// total_existencias cuenta renglones de stock.
 function agrupar(rows) {
   const mapa = new Map();
   for (const r of rows) {
+    const ubicNorm = norm(r.ubicacion);
+    const ccNorm = r.codigo_control_norm ?? norm(r.codigo_control);
     // Sin número de parte, cada producto es su propio grupo (mismo criterio que
     // vw_stock_agrupado): así no se juntan productos distintos en una fila.
-    const clave = `${r.almacen_id}|${r.no_parte || `prod:${r.producto_id}`}`;
+    const clave = [
+      r.almacen_id,
+      r.no_parte || `prod:${r.producto_id}`,
+      ubicNorm ?? "",
+      r.estado_id ?? "",
+      ccNorm ?? "",
+    ].join("|");
     const g = mapa.get(clave) || {
       almacen_id: r.almacen_id,
       almacen_nombre: r.almacen_nombre,
       no_parte: r.no_parte,
       producto_nombre: r.producto_nombre,
+      ubicacion: r.ubicacion,
+      ubicacion_norm: ubicNorm,
+      estado_id: r.estado_id ?? null,
+      estado_nombre: r.estado_nombre,
+      codigo_control: r.codigo_control,
       stock_total: 0,
       total_existencias: 0,
       _productos: new Set(),
@@ -179,7 +201,9 @@ function agrupar(rows) {
   }
   return [...mapa.values()].sort(
     (a, b) => (a.almacen_nombre || "").localeCompare(b.almacen_nombre || "") ||
-              (a.no_parte || "").localeCompare(b.no_parte || "")
+              (a.no_parte || "").localeCompare(b.no_parte || "") ||
+              (a.ubicacion || "").localeCompare(b.ubicacion || "") ||
+              (a.codigo_control || "").localeCompare(b.codigo_control || "")
   );
 }
 
@@ -188,7 +212,7 @@ function agrupar(rows) {
 function verDetalle(grupo, onCambio) {
   const body = el("div", { class: "modal__body" }, [el("p", { class: "loading", text: "Cargando series…" })]);
   const { close } = openModal({
-    title: `Detalle — ${grupo.no_parte || "Sin no. de parte"}`,
+    title: `Detalle — ${[grupo.no_parte || "Sin no. de parte", grupo.codigo_control].filter(Boolean).join(" · ")}`,
     body,
     submitLabel: "Cerrar",
     readOnly: true,
@@ -201,10 +225,10 @@ function verDetalle(grupo, onCambio) {
   async function cargarDetalle() {
     let q = supabase.from("vw_producto_almacen").select("*").eq("almacen_id", grupo.almacen_id);
     q = grupo.no_parte ? q.eq("no_parte", grupo.no_parte) : q.is("no_parte", null);
-    // Se arrastra el filtro de estado de la lista: si no, el detalle mostraría
-    // existencias que el grupo ya había descartado y los totales no cuadrarían.
-    if (filtros.estado_id) q = q.eq("estado_id", filtros.estado_id);
-    const { data, error } = await q.order("no_serie");
+    // El grano de la fila incluye estado, ubicación y código de control: se
+    // filtran los tres para que el detalle y los totales cuadren con la fila.
+    q = grupo.estado_id != null ? q.eq("estado_id", grupo.estado_id) : q.is("estado_id", null);
+    const { data: todas, error } = await q.order("no_serie");
 
     clear(body);
     if (error) {
@@ -212,12 +236,22 @@ function verDetalle(grupo, onCambio) {
       return;
     }
 
-    const total = (data || []).reduce((s, r) => s + Number(r.stock_actual || 0), 0);
+    const ubicObjetivo = grupo.ubicacion_norm ?? norm(grupo.ubicacion);
+    const ccObjetivo = norm(grupo.codigo_control);
+    const data = (todas || []).filter(
+      (r) => norm(r.ubicacion) === ubicObjetivo &&
+             (r.codigo_control_norm ?? norm(r.codigo_control)) === ccObjetivo
+    );
+
+    const total = data.reduce((s, r) => s + Number(r.stock_actual || 0), 0);
     body.appendChild(
       el("dl", { class: "ticket__meta" }, [
         el("div", {}, [el("dt", { text: "Almacén" }), el("dd", {}, [badgeAlmacen(grupo.almacen_nombre)])]),
+        el("div", {}, [el("dt", { text: "Estado" }), el("dd", {}, [grupo.estado_nombre ? badgeEstado(grupo.estado_nombre) : el("span", { class: "mono", text: "—" })])]),
+        el("div", {}, [el("dt", { text: "Ubicación" }), el("dd", { class: "mono", text: grupo.ubicacion || "Sin ubicación" })]),
+        el("div", {}, [el("dt", { text: "Cód. control" }), el("dd", { class: "mono", text: grupo.codigo_control || "—" })]),
         el("div", {}, [el("dt", { text: "Stock total" }), el("dd", { class: "mono", text: String(total) })]),
-        el("div", {}, [el("dt", { text: "Ubicaciones" }), el("dd", { class: "mono", text: String((data || []).length) })]),
+        el("div", {}, [el("dt", { text: "Existencias" }), el("dd", { class: "mono", text: String(data.length) })]),
       ])
     );
 
@@ -225,6 +259,7 @@ function verDetalle(grupo, onCambio) {
       { key: "producto_nombre", label: "Nombre" },
       { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
       { key: "no_serie", label: "Serie", render: (r) => el("span", { class: "mono", text: r.no_serie || "—" }) },
+      { key: "codigo_control", label: "Cód. control", render: (r) => el("span", { class: "mono", text: r.codigo_control || "—" }) },
       { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
       { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
       { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "—" }) },
@@ -236,16 +271,22 @@ function verDetalle(grupo, onCambio) {
     ];
 
     body.appendChild(
-      buildTable(columnas, data || [], puedeEditar()
-        ? (row) => [iconButton("Cambiar estado", "btn--ghost", () => cambiarEstado(row, data || []))]
+      buildTable(columnas, data, puedeEditar()
+        ? (row) => [iconButton("Cambiar estado", "btn--ghost", () => cambiarEstado(row))]
         : null)
     );
   }
 
-  // Reclasificar una existencia. Si el destino ya existe, el servidor fusiona
-  // las dos y desactiva la de origen (salvo en activo fijo, que nunca fusiona).
-  async function cambiarEstado(fila, hermanas) {
+  // Reclasificar una existencia. Si el destino ya existe (mismo estado,
+  // ubicación y código de control), el servidor fusiona las dos y desactiva la
+  // de origen (salvo en componente trazable, que nunca fusiona).
+  async function cambiarEstado(fila) {
     const estados = await cargarCatalogo("estados");
+    // Hermanas: todas las existencias del mismo producto en el almacén, para
+    // avisar si el nuevo estado/ubicación coincide con otra del mismo lote.
+    const { data: hermanas } = await supabase
+      .from("vw_producto_almacen").select("*")
+      .eq("almacen_id", grupo.almacen_id).eq("producto_id", fila.producto_id);
     const campos = [
       { name: "estado_id", label: "Estado", type: "select", options: estados.map((e) => ({ value: e.id, label: e.nombre })) },
       { name: "ubicacion", label: "Ubicación", type: "text", placeholder: "Ubicación…" },
@@ -268,14 +309,17 @@ function verDetalle(grupo, onCambio) {
     const aviso = el("p", { class: "notice", role: "status" });
     cuerpo.appendChild(aviso);
 
-    // Aviso en vivo: si el destino ya existe, esto va a fusionar.
+    // Aviso en vivo: si el destino ya existe, esto va a fusionar. La fusión solo
+    // ocurre entre existencias del mismo código de control.
     const revisarFusion = () => {
       const est = entradas.estado_id.value ? Number(entradas.estado_id.value) : null;
       const ubi = entradas.ubicacion.value.trim().toUpperCase();
-      const destino = hermanas.find(
+      const cc = (fila.codigo_control || "").trim().toUpperCase();
+      const destino = (hermanas || []).find(
         (h) => h.id !== fila.id &&
                (h.estado_id ?? null) === est &&
-               (h.ubicacion || "").trim().toUpperCase() === ubi
+               (h.ubicacion || "").trim().toUpperCase() === ubi &&
+               (h.codigo_control || "").trim().toUpperCase() === cc
       );
       if (destino && !fila.es_trazable) {
         aviso.hidden = false;
