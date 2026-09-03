@@ -15,20 +15,22 @@ export function renderBarcode(value) {
     el("span", { class: "barcode-cell__value mono", text: value }),
   ]);
 
-  draw(svg, value, { height: 26, width: 1, margin: 0, displayValue: false });
+  draw(svg, value, { height: 26, width: 1.4, margin: 0, displayValue: false });
   return wrap;
 }
 
 // Etiqueta grande, para el formulario o para imprimir.
 // `lineColor` se fija en la etiqueta imprimible: si heredara el color del tema,
 // en modo oscuro saldría blanco sobre blanco en el papel.
+// Módulo ancho (`width`) y margen generoso: las barras finas y sin zona muda
+// son lo que más cuesta leer con la cámara en etiquetas pequeñas.
 export function renderBarcodeLabel(value, { height = 54, lineColor } = {}) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "barcode");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", `Código de barras ${value}`);
   draw(svg, value, {
-    height, width: 1.6, margin: 6, displayValue: true, fontSize: 13,
+    height, width: 2.3, margin: 10, displayValue: true, fontSize: 13,
     ...(lineColor ? { lineColor } : {}),
   });
   return svg;

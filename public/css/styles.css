@@ -795,6 +795,9 @@ select.input:not([multiple]) {
 .scanner__video {
   display: block; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh;
   object-fit: cover; background: #000;
+  /* Aumento en pantalla (fallback de zoom cuando la cámara no lo hace por
+     hardware): se escala desde el centro. */
+  transform-origin: center center; transition: transform .12s ease-out;
 }
 /* Retícula: recuadro ancho y bajo (forma de código 1D), centrado, con línea
    guía. El scrim oscuro alrededor concentra la vista en la franja del código. */
@@ -811,9 +814,14 @@ select.input:not([multiple]) {
   height: 2px; margin-top: -1px; background: rgba(255, 90, 90, .95);
 }
 .scanner__actions {
-  display: flex; justify-content: flex-end; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 14px 20px 18px;
 }
+.scanner__zoom {
+  flex: 1; min-width: 0; max-width: 220px; margin-right: auto;
+  accent-color: var(--primary); cursor: pointer;
+}
+.scanner__zoom[hidden] { display: none; }
 
 .pcard {
   display: flex; gap: 14px; justify-content: space-between; align-items: center;
