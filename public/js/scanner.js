@@ -10,11 +10,19 @@
 import { el, iconButton, toast } from "./ui.js";
 import { icon } from "./icons.js";
 
+let avisadoContextoInseguro = false;
+
 export function escanerDisponible() {
-  return (
-    !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
-    typeof window.ZXing?.BrowserMultiFormatReader === "function"
-  );
+  const tieneCamara = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  // Diagnóstico: la causa habitual de que no haya cámara es servir la página por
+  // HTTP a una IP de LAN (no es contexto seguro). Se avisa una sola vez.
+  if (!tieneCamara && window.isSecureContext === false && !avisadoContextoInseguro) {
+    avisadoContextoInseguro = true;
+    console.warn(
+      "Escáner oculto: la página no está en un contexto seguro. Ábrela por HTTPS o desde localhost (p. ej. `npm run dev:lan`)."
+    );
+  }
+  return tieneCamara && typeof window.ZXing?.BrowserMultiFormatReader === "function";
 }
 
 // Botón para escanear, o null si el navegador no puede (sin cámara, contexto no
@@ -47,6 +55,15 @@ export function abrirEscaner(onCodigo) {
 
   const btnLinterna = el("button", { class: "btn btn--ghost btn--sm", type: "button", text: "Linterna" });
   btnLinterna.hidden = true;
+
+  // Barra de zoom. Se muestra cuando el vídeo arranca (configurarCamara): si la
+  // cámara admite zoom por hardware controla ese; si no, hace un aumento en
+  // pantalla que solo ayuda a encuadrar.
+  const inpZoom = el("input", {
+    class: "scanner__zoom", type: "range", min: "1", max: "4", step: "0.1", value: "1",
+    "aria-label": "Zoom de la cámara",
+  });
+  inpZoom.hidden = true;
   const btnCancelar = el("button", {
     class: "btn btn--ghost btn--sm", type: "button", text: "Cancelar", onclick: () => cerrar(),
   });
@@ -59,7 +76,7 @@ export function abrirEscaner(onCodigo) {
       el("div", { class: "modal__header" }, [
         el("div", { class: "modal__heading" }, [
           el("h3", { class: "modal__title", text: "Escanear código" }),
-          el("p", { class: "modal__subtitle", text: "Centra el código de barras en el recuadro." }),
+          el("p", { class: "modal__subtitle", text: "Acerca el código sin pegarlo. Usa el zoom o pellizca para acercar; toca la imagen para reenfocar." }),
         ]),
         cerrarX,
       ]),
@@ -67,7 +84,7 @@ export function abrirEscaner(onCodigo) {
         video,
         el("div", { class: "scanner__frame", "aria-hidden": "true" }),
       ]),
-      el("div", { class: "scanner__actions" }, [btnLinterna, btnCancelar]),
+      el("div", { class: "scanner__actions" }, [inpZoom, btnLinterna, btnCancelar]),
     ]),
   ]);
 
@@ -99,8 +116,8 @@ export function abrirEscaner(onCodigo) {
   }
 
   // Cuando el vídeo empieza a reproducir, la pista ya está en video.srcObject:
-  // ahí se puede consultar si la cámara tiene linterna.
-  video.addEventListener("playing", configurarLinterna, { once: true });
+  // ahí se consultan y aplican enfoque, zoom y linterna.
+  video.addEventListener("playing", configurarCamara, { once: true });
 
   // Solo formatos 1D: la app usa CODE-128 (etiquetas propias) y EAN/UPC (códigos
   // de fábrica). Restringir los formatos hace que ZXing use únicamente el lector
@@ -120,7 +137,15 @@ export function abrirEscaner(onCodigo) {
   reader = new window.ZXing.BrowserMultiFormatReader(hints, 250);
   reader
     .decodeFromConstraints(
-      { video: { facingMode: { ideal: "environment" } } },
+      {
+        video: {
+          facingMode: { ideal: "environment" },
+          // 720p: resuelve las barras finas de una etiqueta pequeña sin el coste
+          // de binarizar 1080p en cada frame (eso ya hundió la tasa de lectura).
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      },
       video,
       (result) => {
         if (cerrado || !result) return; // sin `result` = frame sin código, se ignora
@@ -129,6 +154,11 @@ export function abrirEscaner(onCodigo) {
         onCodigo(texto);
       }
     )
+    .then(() => {
+      // Si el modal se cerró antes de que la cámara terminara de abrir, el stream
+      // recién adquirido quedaría encendido: se libera aquí.
+      if (cerrado) pararCamara();
+    })
     .catch((err) => {
       const nombre = err && err.name;
       const msg =
@@ -141,26 +171,93 @@ export function abrirEscaner(onCodigo) {
       cerrar();
     });
 
-  function configurarLinterna() {
+  function configurarCamara() {
     if (cerrado) return;
     const track = video.srcObject && video.srcObject.getVideoTracks && video.srcObject.getVideoTracks()[0];
-    if (!track || !track.getCapabilities) return;
-    let caps;
-    try { caps = track.getCapabilities(); } catch { return; }
-    if (!caps || !("torch" in caps)) return;
+    if (!track) return;
 
-    let encendida = false;
-    btnLinterna.hidden = false;
-    btnLinterna.onclick = async () => {
-      encendida = !encendida;
-      try {
-        await track.applyConstraints({ advanced: [{ torch: encendida }] });
-        btnLinterna.classList.toggle("btn--primary", encendida);
-      } catch {
-        // Algunos equipos no permiten alternar la linterna con la cámara activa.
-        encendida = !encendida;
-        toast("Este dispositivo no permite encender la linterna aquí.", "error");
-      }
+    let caps = {};
+    try { caps = (track.getCapabilities && track.getCapabilities()) || {}; } catch { /* noop */ }
+
+    // applyConstraints con una restricción "advanced"; devuelve false si el
+    // equipo no la soporta (no es un error que deba molestar al usuario).
+    const aplicar = async (restriccion) => {
+      try { await track.applyConstraints({ advanced: [restriccion] }); return true; }
+      catch { return false; }
     };
+
+    const soportaFoco = (modo) => Array.isArray(caps.focusMode) && caps.focusMode.includes(modo);
+
+    // --- Enfoque continuo: el arreglo principal del "se ve borroso al acercar".
+    if (soportaFoco("continuous")) aplicar({ focusMode: "continuous" });
+
+    // --- Zoom. Por hardware si la cámara lo admite (Android Chrome, iOS 16+):
+    // ZXing recibe los frames ya ampliados. Si no, aumento en pantalla, que solo
+    // ayuda a encuadrar (ZXing lee la resolución intrínseca, no la escalada).
+    const zoomHW = caps.zoom && typeof caps.zoom.max === "number" && caps.zoom.max > (caps.zoom.min || 1);
+    let zMin = 1, zMax = 4, zStep = 0.1;
+    if (zoomHW) {
+      zMin = caps.zoom.min || 1;
+      zMax = caps.zoom.max;
+      zStep = caps.zoom.step || Math.max(0.1, (zMax - zMin) / 40);
+    }
+    inpZoom.min = String(zMin);
+    inpZoom.max = String(zMax);
+    inpZoom.step = String(zStep);
+    inpZoom.value = String(zMin);
+    inpZoom.hidden = false;
+
+    const aplicarZoom = (z) => {
+      const v = Math.min(zMax, Math.max(zMin, Number(z) || zMin));
+      inpZoom.value = String(v);
+      if (zoomHW) aplicar({ zoom: v });
+      else video.style.transform = `scale(${v})`;
+    };
+    inpZoom.oninput = () => aplicarZoom(inpZoom.value);
+
+    // Pellizco (dos dedos) sobre el vídeo → mismo zoom que la barra.
+    let pinchBase = 0, pinchZoom = zMin;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    video.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) { pinchBase = dist(e.touches); pinchZoom = Number(inpZoom.value); }
+    }, { passive: true });
+    video.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 2 && pinchBase > 0) {
+        e.preventDefault();
+        aplicarZoom(pinchZoom * (dist(e.touches) / pinchBase));
+      }
+    }, { passive: false });
+    video.addEventListener("touchend", () => { pinchBase = 0; }, { passive: true });
+
+    // --- Toque simple (un dedo) para reenfocar donde apunta el usuario.
+    video.addEventListener("click", (e) => {
+      if (!soportaFoco("single-shot")) return;
+      const r = video.getBoundingClientRect();
+      const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+      (async () => {
+        if (!(await aplicar({ focusMode: "single-shot", pointsOfInterest: [{ x, y }] }))) {
+          await aplicar({ focusMode: "single-shot" });
+        }
+        // Volver a enfoque continuo tras un momento, si existe.
+        setTimeout(() => { if (!cerrado && soportaFoco("continuous")) aplicar({ focusMode: "continuous" }); }, 1600);
+      })();
+    });
+
+    // --- Linterna.
+    if ("torch" in caps) {
+      let encendida = false;
+      btnLinterna.hidden = false;
+      btnLinterna.onclick = async () => {
+        encendida = !encendida;
+        if (await aplicar({ torch: encendida })) {
+          btnLinterna.classList.toggle("btn--primary", encendida);
+        } else {
+          // Algunos equipos no permiten alternar la linterna con la cámara activa.
+          encendida = !encendida;
+          toast("Este dispositivo no permite encender la linterna aquí.", "error");
+        }
+      };
+    }
   }
 }
