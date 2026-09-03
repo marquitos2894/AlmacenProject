@@ -396,10 +396,10 @@ async function openForm(config, record, rerender, segmentoDefault) {
   }
 
   openModal({
-    title: `${isEdit ? "Editar" : "Nuevo"} — ${config.singular || config.title}`,
+    title: config.formTitle || `${isEdit ? "Editar" : "Nuevo"} — ${config.singular || config.title}`,
     subtitle: config.formHint,
     body,
-    submitLabel: isEdit ? "Guardar cambios" : "Crear",
+    submitLabel: config.submitLabel || (isEdit ? "Guardar cambios" : "Crear"),
     onSubmit: async (close) => {
       const payload = {};
       const extra = {}; // campos que no van directo a la tabla (multiselect con junction)
@@ -470,9 +470,9 @@ const UNICIDAD = {
   unidades_medida_codigo_key: "Ya existe una unidad de medida con ese código.",
   uq_producto_almacen_trazable: "Ese componente ya tiene existencia registrada; no puede duplicarse.",
   uq_producto_almacen_grano: "Ya existe una existencia con ese estado y esa ubicación.",
-  uq_euo_codigo_asignado_vigente: "Otro equipo ya tiene ese código asignado en esa unidad operativa.",
+  uq_euo_codigo_asignado_vigente: "Otro equipo ya tiene ese código asignado en ese establecimiento.",
   uq_euo_asignacion_abierta: "Ese equipo ya tiene una asignación vigente. Ciérrala con una fecha de fin antes de reasignarlo.",
-  uq_unidad_operativa_codigo: "Ya existe una unidad operativa con ese código.",
+  uq_unidad_operativa_codigo: "Ya existe un establecimiento con ese código.",
   uq_equipos_codigo: "Ya existe un equipo con ese código.",
   uq_proveedores_codigo: "Ya existe un proveedor con ese código.",
   uq_proveedores_ruc: "Ya existe un proveedor con ese RUC.",

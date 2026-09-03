@@ -23,7 +23,7 @@ export const productoFormConfig = {
     },
     {
       name: "no_parte", label: "No. de parte", type: "text",
-      hint: "En consumibles no puede repetirse; los componentes sí lo comparten entre unidades.",
+      hint: "En consumibles no puede repetirse; los componentes sí lo comparten entre unidades. Si lo dejas vacío en un consumible se genera uno interno (INT-XXXXX).",
     },
     { name: "marca", label: "Marca", type: "text" },
     // Datos de la máquina concreta. Viven en producto_unidad, no en productos,
@@ -35,7 +35,10 @@ export const productoFormConfig = {
     },
     {
       name: "codigo_interno", label: "Código interno", type: "text", junction: true,
+      readOnly: true,
       showIf: (v) => v.es_trazable === true,
+      placeholder: "Se generará (TCH-…)",
+      hint: "Se asigna automáticamente con el patrón TCH-XXXXX; no se edita.",
     },
     {
       name: "modelo", label: "Modelo", type: "text", junction: true,
@@ -46,10 +49,9 @@ export const productoFormConfig = {
       name: "codigo_barras",
       label: "Código de barras",
       type: "text",
-      full: true,
       scan: true,
       placeholder: "Déjalo vacío para generarlo…",
-      hint: "Si el producto ya trae uno impreso, escríbelo o escanéalo. Si lo dejas vacío se genera a partir del no. de parte.",
+      hint: "En un consumible es el no. de parte; en un componente, su serie (o su código interno). Si escribes uno propio, se respeta.",
     },
     {
       // Solo tiene sentido a granel: una máquina trazable es una pieza, no

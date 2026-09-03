@@ -59,7 +59,7 @@ export function abrirEscaner(onCodigo) {
       el("div", { class: "modal__header" }, [
         el("div", { class: "modal__heading" }, [
           el("h3", { class: "modal__title", text: "Escanear código" }),
-          el("p", { class: "modal__subtitle", text: "Enfoca el código de barras con la cámara." }),
+          el("p", { class: "modal__subtitle", text: "Centra el código de barras en el recuadro." }),
         ]),
         cerrarX,
       ]),
@@ -102,10 +102,34 @@ export function abrirEscaner(onCodigo) {
   // ahí se puede consultar si la cámara tiene linterna.
   video.addEventListener("playing", configurarLinterna, { once: true });
 
-  reader = new window.ZXing.BrowserMultiFormatReader(undefined, 250);
+  // Solo formatos 1D + TRY_HARDER: la app usa CODE-128 (etiquetas propias) y
+  // EAN/UPC (códigos de fábrica). Restringir los formatos hace que ZXing use
+  // únicamente el lector 1D y mejora bastante la precisión y la velocidad.
+  let hints;
+  const { DecodeHintType, BarcodeFormat } = window.ZXing || {};
+  if (DecodeHintType && BarcodeFormat) {
+    hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF,
+      BarcodeFormat.CODABAR, BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
+    ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+  }
+
+  reader = new window.ZXing.BrowserMultiFormatReader(hints, 120);
   reader
     .decodeFromConstraints(
-      { video: { facingMode: { ideal: "environment" } } },
+      {
+        video: {
+          facingMode: { ideal: "environment" },
+          // Todo con `ideal` / `advanced`: nunca lanza OverconstrainedError.
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+          advanced: [{ focusMode: "continuous" }],
+        },
+      },
       video,
       (result) => {
         if (cerrado || !result) return; // sin `result` = frame sin código, se ignora

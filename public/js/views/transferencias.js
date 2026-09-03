@@ -8,7 +8,6 @@
 import { supabase } from "../supabaseClient.js";
 import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
-import { renderBarcodeLabel } from "../barcode.js";
 import { mensajeError } from "../crud.js";
 import { badgeAlmacen, badgeEstado } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
@@ -64,7 +63,7 @@ function buildFiltros(almacenes, onChange) {
   ]);
   const busca = el("input", {
     class: "input", type: "search", id: "f-busca", value: filtros.q,
-    placeholder: "No. de parte, nombre o código…", autocomplete: "off", spellcheck: "false",
+    placeholder: "No. de parte, nombre, serie, código…", autocomplete: "off", spellcheck: "false",
     oninput: debounce((e) => { filtros.q = e.target.value; onChange(); }),
   });
   const scan = botonEscanear((codigo) => {
@@ -88,16 +87,19 @@ async function cargar(container) {
   clear(container);
   container.appendChild(el("p", { class: "loading", text: "Cargando…" }));
 
-  let q = supabase.from("vw_transferencias").select("*");
+  // Un renglón por línea de producto, no agrupado por transferencia.
+  let q = supabase.from("vw_transferencia_detalle").select("*");
   if (filtros.almacen_id) {
     const id = Number(filtros.almacen_id);
     q = q.or(`almacen_origen_id.eq.${id},almacen_destino_id.eq.${id}`);
   }
   if (filtros.q) {
     const safe = filtros.q.replace(/[,()*]/g, " ").trim();
-    if (safe) q = q.or(`busq_no_parte.ilike.%${safe}%,busq_nombre.ilike.%${safe}%,busq_codigo_barras.ilike.%${safe}%`);
+    // No. de parte, nombre, código de barras y —solo componentes— serie y
+    // código interno (NULL en consumibles, así que no estorban).
+    if (safe) q = q.or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,codigo_barras.ilike.%${safe}%,no_serie.ilike.%${safe}%,codigo_interno.ilike.%${safe}%`);
   }
-  q = q.order("created_at", { ascending: false }).limit(200);
+  q = q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300);
 
   const { data, error } = await q;
   clear(container);
@@ -111,17 +113,27 @@ async function cargar(container) {
     { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
     { key: "almacen_origen_nombre", label: "Origen", render: (r) => badgeAlmacen(r.almacen_origen_nombre) },
     { key: "almacen_destino_nombre", label: "Destino", render: (r) => badgeAlmacen(r.almacen_destino_nombre) },
-    { key: "productos_resumen", label: "Productos" },
-    { key: "total_cantidad", label: "Cantidad", render: (r) => numCell(r.total_cantidad) },
+    { key: "producto_nombre", label: "Producto", render: celdaProducto },
+    { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
+    { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
     { key: "motivo", label: "Motivo" },
   ];
 
   container.appendChild(
     buildTable(columnas, data || [], (row) => [
-      iconButton("Ver ticket", "btn--ghost", () => verTicket(row), "ticket"),
+      iconButton("Ver ticket", "btn--ghost", () => verTicket({ id: row.transferencia_id, folio: row.folio }), "ticket"),
     ])
   );
-  container.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} transferencia(s).` }));
+  container.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} línea(s) de transferencia.` }));
+}
+
+// Celda "Producto": nombre y, solo para componentes, su serie o código interno.
+function celdaProducto(r) {
+  const sub = r.es_trazable ? (r.no_serie || r.codigo_interno) : null;
+  return el("div", { class: "cell-stack" }, [
+    el("div", { text: r.producto_nombre || "—" }),
+    sub ? el("div", { class: "cell-sub mono", text: sub }) : null,
+  ]);
 }
 
 // =====================================================================
@@ -434,10 +446,6 @@ async function verTicket(base) {
       el("img", { class: "ticket__logo", src: LOGO_EMPRESA, alt: "Corimayo" }),
       el("p", { class: "ticket__label", text: "Folio" }),
       el("p", { class: "ticket__folio mono", text: t.folio }),
-      renderBarcodeLabel(t.folio, { height: 44 }),
-      el("div", { class: "solo-impresion" }, [
-        renderBarcodeLabel(t.folio, { height: 44, lineColor: "#111111" }),
-      ]),
     ]),
     el("dl", { class: "ticket__meta" }, datos.map(([k, v]) =>
       el("div", {}, [el("dt", { text: k }), el("dd", { text: v ?? "—" })])
@@ -461,7 +469,8 @@ async function verTicket(base) {
   const columnas = [
     { key: "producto_nombre", label: "Producto" },
     { key: "no_parte", label: "No. parte" },
-    { key: "no_serie", label: "Serie" },
+    // Solo aplica a componentes: su serie o, si no la tiene, su código interno.
+    { key: "no_serie", label: "Serie / cód.", render: (r) => el("span", { class: "mono", text: (r.no_serie || r.codigo_interno) || "—" }) },
     { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
     { key: "ubicacion_origen", label: "Ubic. origen", render: (r) => el("span", { class: "mono", text: r.ubicacion_origen || "—" }) },
     { key: "ubicacion_destino", label: "Ubic. destino", render: (r) => el("span", { class: "mono", text: r.ubicacion_destino || "—" }) },
@@ -469,7 +478,7 @@ async function verTicket(base) {
   ];
   hoja.appendChild(buildTable(columnas, data || [], null));
   hoja.appendChild(
-    el("p", { class: "ticket__pie", text: `${(data || []).length} renglón(es) · impreso desde Gestión de Almacén` })
+    el("p", { class: "ticket__pie", text: `${(data || []).length} Items en Total · impreso desde Gestión de Almacén` })
   );
 }
 

@@ -6,7 +6,6 @@ import { supabase } from "../supabaseClient.js";
 import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
 import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
-import { renderBarcodeLabel } from "../barcode.js";
 import { botonEscanear } from "../scanner.js";
 import { badgeEstado } from "../badges.js";
 import { icon } from "../icons.js";
@@ -104,7 +103,9 @@ async function renderList(root, almacenId) {
 
   const lista = el("div", { class: "card" });
   const estados = await loadEstados();
-  root.appendChild(buildFiltros(estados, () => cargar()));
+  let pagina = 0;
+  const PAGE = 50;
+  root.appendChild(buildFiltros(estados, () => { pagina = 0; cargar(); }));
   root.appendChild(lista);
   await cargar();
 
@@ -113,28 +114,37 @@ async function renderList(root, almacenId) {
     lista.appendChild(el("p", { class: "loading", text: "Cargando…" }));
 
     // Un renglón por línea de producto: cada movimiento se lista individual,
-    // sin agruparse por ticket.
-    let q = supabase.from("vw_movimiento_detalle").select("*").eq("almacen_id", almacenId);
+    // sin agruparse por ticket. Paginado en el servidor (`range` + `count`).
+    let q = supabase.from("vw_movimiento_detalle").select("*", { count: "exact" }).eq("almacen_id", almacenId);
     if (filtros.no_parte) {
       const t = filtros.no_parte.replace(/[,()*]/g, " ").trim();
-      if (t) q = q.or(`no_parte.ilike.%${t}%,codigo_barras.ilike.%${t}%`);
+      // Busca en no. de parte, código de barras y —solo componentes— serie y
+      // código interno (las dos últimas son NULL en consumibles, así que no
+      // estorban).
+      if (t) q = q.or(`no_parte.ilike.%${t}%,codigo_barras.ilike.%${t}%,no_serie.ilike.%${t}%,codigo_interno.ilike.%${t}%`);
     }
     if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
     if (filtros.estado_id) q = q.eq("estado_id", Number(filtros.estado_id));
-    q = q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300);
+    q = q.order("created_at", { ascending: false }).order("id", { ascending: false })
+         .range(pagina * PAGE, pagina * PAGE + PAGE - 1);
 
-    const { data, error } = await q;
+    const { data, error, count } = await q;
     clear(lista);
     if (error) {
       lista.appendChild(el("div", { class: "alert alert--error", text: `No se pudieron cargar los movimientos: ${error.message}` }));
       return;
     }
 
+    const total = count ?? (data || []).length;
+    const totalPaginas = Math.max(1, Math.ceil(total / PAGE));
+    // Un filtro puede dejar la página actual fuera de rango: se vuelve a la última.
+    if (pagina > totalPaginas - 1) { pagina = totalPaginas - 1; return cargar(); }
+
     const columnas = [
       { key: "folio", label: "Folio", render: (r) => el("span", { class: "folio-tag mono", text: r.folio }) },
       { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
       { key: "tipo_movimiento", label: "Tipo", render: tipoBadge },
-      { key: "producto_nombre", label: "Producto" },
+      { key: "producto_nombre", label: "Producto", render: celdaProducto },
       { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
       { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
       { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
@@ -147,14 +157,45 @@ async function renderList(root, almacenId) {
           () => verTicket({ id: row.movimiento_id, folio: row.folio, almacen_nombre: almacen.nombre }), "ticket"),
       ])
     );
-    lista.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} movimiento(s).` }));
+
+    const desde = total ? pagina * PAGE + 1 : 0;
+    const hasta = Math.min(total, (pagina + 1) * PAGE);
+    lista.appendChild(
+      el("div", { class: "list-foot" }, [
+        el("p", { class: "list-meta", text: total ? `${desde}–${hasta} de ${total} movimiento(s)` : "0 movimiento(s)" }),
+        buildPaginador(pagina, totalPaginas, (p) => { pagina = p; cargar(); }),
+      ])
+    );
   }
+}
+
+// Celda "Producto": nombre y, solo para componentes, su serie o código interno
+// debajo.
+function celdaProducto(r) {
+  const sub = r.es_trazable ? (r.no_serie || r.codigo_interno) : null;
+  return el("div", { class: "cell-stack" }, [
+    el("div", { text: r.producto_nombre || "—" }),
+    sub ? el("div", { class: "cell-sub mono", text: sub }) : null,
+  ]);
+}
+
+function buildPaginador(pagina, totalPaginas, onGo) {
+  if (totalPaginas <= 1) return el("span", {});
+  const btn = (label, destino, disabled) => el("button", {
+    class: "btn btn--ghost btn--sm", type: "button", disabled: disabled ? "" : null,
+    onclick: () => { if (!disabled) onGo(destino); },
+  }, label);
+  return el("div", { class: "paginador" }, [
+    btn("‹ Anterior", pagina - 1, pagina === 0),
+    el("span", { class: "paginador__estado mono", text: `Página ${pagina + 1} de ${totalPaginas}` }),
+    btn("Siguiente ›", pagina + 1, pagina >= totalPaginas - 1),
+  ]);
 }
 
 function buildFiltros(estados, onChange) {
   const noParte = el("input", {
     class: "input", type: "search", id: "f-no-parte", value: filtros.no_parte,
-    placeholder: "No. de parte o código…", autocomplete: "off", spellcheck: "false",
+    placeholder: "No. de parte, serie, código…", autocomplete: "off", spellcheck: "false",
     oninput: debounce((e) => { filtros.no_parte = e.target.value; onChange(); }),
   });
   const scan = botonEscanear((codigo) => {
@@ -180,7 +221,7 @@ function buildFiltros(estados, onChange) {
   ]);
 
   return el("div", { class: "filters" }, [
-    filtro("f-no-parte", "No. de parte / código", noParte),
+    filtro("f-no-parte", "N.º parte / serie / código", noParte),
     filtro("f-nombre", "Nombre", nombre),
     filtro("f-estado", "Estado", estado),
     scan ? el("div", { class: "filter" }, [el("span", { class: "filter-label", text: "Código de barras" }), scan]) : null,
@@ -313,7 +354,7 @@ async function renderForm(root, almacenId) {
   });
 
   const refUnidadOperativa = buildReferencia({
-    etiqueta: "Unidad operativa", icono: "unidades-operativas", textoBoton: "Elegir unidad operativa",
+    etiqueta: "Establecimiento", icono: "unidades-operativas", textoBoton: "Elegir establecimiento",
     config: PICKER_UNIDAD_OPERATIVA,
     onElegir: (row) => { referencias.id_unidad_operativa = row?.id ?? null; },
     describir: (row) => row.etiqueta || row.nombre,
@@ -607,7 +648,7 @@ async function verTicket(mov) {
     ["Proveedor", proveedor],
     ["Producto / activo", activo],
     ["Equipo", equipo],
-    ["Unidad operativa", unidadOp],
+    ["Establecimiento", unidadOp],
     ["Proyecto / zona", ubicacionOp],
     ["Registró", t.usuario_nombre],
   ].filter(([, v]) => v != null && String(v).trim() !== "");
@@ -618,12 +659,6 @@ async function verTicket(mov) {
       el("img", { class: "ticket__logo", src: LOGO_EMPRESA, alt: "Corimayo" }),
       el("p", { class: "ticket__label", text: "Folio" }),
       el("p", { class: "ticket__folio mono", text: t.folio }),
-      // Dos versiones: la de pantalla sigue el tema; la de papel va en negro,
-      // porque en tema oscuro el código saldría blanco sobre blanco.
-      renderBarcodeLabel(t.folio, { height: 44 }),
-      el("div", { class: "solo-impresion" }, [
-        renderBarcodeLabel(t.folio, { height: 44, lineColor: "#111111" }),
-      ]),
     ]),
     el("dl", { class: "ticket__meta" }, datos.map(([k, v]) => metaItem(k, v))),
     // Texto libre: va aparte porque puede ser largo y no cabe en la rejilla.
@@ -652,7 +687,8 @@ async function verTicket(mov) {
   const columnas = [
     { key: "producto_nombre", label: "Producto" },
     { key: "no_parte", label: "No. parte" },
-    { key: "no_serie", label: "Serie" },
+    // Solo aplica a componentes: su serie o, si no la tiene, su código interno.
+    { key: "no_serie", label: "Serie / cód.", render: (r) => el("span", { class: "mono", text: (r.no_serie || r.codigo_interno) || "—" }) },
     { key: "estado_nombre", label: "Estado" },
     { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "—" }) },
     { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
@@ -660,7 +696,7 @@ async function verTicket(mov) {
   // La tabla entra en la hoja: sin ella el ticket impreso no dice qué se movió.
   hoja.appendChild(buildTable(columnas, data || [], null));
   hoja.appendChild(
-    el("p", { class: "ticket__pie", text: `${(data || []).length} renglón(es) · impreso desde Gestión de Almacén` })
+    el("p", { class: "ticket__pie", text: `${(data || []).length} Items en Total · impreso desde Gestión de Almacén` })
   );
 }
 

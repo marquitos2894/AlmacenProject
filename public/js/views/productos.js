@@ -5,7 +5,6 @@ import { abrirHistorial } from "../historialProducto.js";
 import { badgeEstado, badgeAlmacen, badgeChip } from "../badges.js";
 import { abrirCambioEstado } from "../cambioEstadoExistencia.js";
 import { iconButton, el } from "../ui.js";
-import { icon } from "../icons.js";
 
 // Series y códigos se leen mejor en monoespaciada, como el resto de códigos.
 const mono = (v) => el("span", { class: "mono", text: v || "—" });
@@ -31,7 +30,7 @@ function nodosUbicacionComponente(row) {
       ]),
     ];
   }
-  return [document.createTextNode("Sin existencia registrada")];
+  return [document.createTextNode("Sin UBICACION registrada")];
 }
 
 // Abre el modal de estado/ubicación de un componente si tiene existencia.
@@ -59,11 +58,8 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
   if (!conExistencia) btnEstado.disabled = true;
 
   const foot = el("div", { class: "card-tile__foot" }, [
-    el("button", {
-      class: "btn btn--sm btn--ghost card-tile__hist", type: "button",
-      onclick: () => abrirHistorial(row),
-      html: `${icon("history", { size: 14, stroke: 1.8 })}<span>Ver movimientos</span>`,
-    }),
+    // Solo icono, como el resto: así las acciones entran en una sola fila.
+    iconButton("Movimientos", "btn--ghost", () => abrirHistorial(row), "history"),
     ...(editable ? [btnEstado] : []),
     iconButton("Imprimir etiqueta", "btn--ghost", () => abrirEtiqueta(row), "print"),
     ...(editable ? [
@@ -85,6 +81,8 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       el("div", { class: "card-tile__serie mono", text: row.no_parte || "—" }),
       row.no_serie ? el("div", { class: "card-tile__label", text: "N.º serie" }) : null,
       row.no_serie ? el("div", { class: "card-tile__serie mono", text: row.no_serie }) : null,
+      row.codigo_interno ? el("div", { class: "card-tile__label", text: "Cód. interno" }) : null,
+      row.codigo_interno ? el("div", { class: "card-tile__serie mono", text: row.codigo_interno }) : null,
       el("div", { class: "card-tile__label", text: "Ubicación actual" }),
       el("div", { class: "card-tile__loc" }, nodosUbicacionComponente(row)),
       el("div", { class: "card-tile__badges" }, [

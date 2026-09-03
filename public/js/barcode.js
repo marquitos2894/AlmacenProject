@@ -36,17 +36,22 @@ export function renderBarcodeLabel(value, { height = 54, lineColor } = {}) {
 
 // Modal de etiqueta imprimible. La etiqueta es lo único que llega al papel:
 // una regla @media print oculta el resto de la página.
+//
+// El código de barras impreso es siempre el campo `codigo_barras` del producto.
+// En un componente ese campo ya contiene su serie (o su código interno).
 export function abrirEtiqueta(producto) {
   if (!producto?.codigo_barras) {
     toast("Ese producto todavía no tiene código de barras.", "error");
     return;
   }
 
+  const esComponente = !!producto?.es_trazable;
   const etiqueta = el("div", { class: "etiqueta zona-impresion" }, [
     el("p", { class: "etiqueta__nombre", text: producto.nombre }),
     el("div", { class: "etiqueta__datos" }, [
       producto.no_parte ? dato("No. parte", producto.no_parte) : null,
       producto.no_serie ? dato("Serie", producto.no_serie) : null,
+      esComponente && producto.codigo_interno ? dato("Cód. interno", producto.codigo_interno) : null,
       producto.marca ? dato("Marca", producto.marca) : null,
     ]),
     renderBarcodeLabel(producto.codigo_barras, { height: 70, lineColor: "#111111" }),

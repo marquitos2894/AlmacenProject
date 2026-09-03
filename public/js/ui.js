@@ -388,11 +388,16 @@ export function buildField(field, value) {
       type: field.type || "text",
       step: field.type === "number" ? (field.step || "any") : null,
       placeholder: field.placeholder || null,
+      // `readOnly`: se muestra y se lee, pero no se teclea (valor calculado).
+      readonly: field.readOnly ? "" : null,
     });
     input.value = v ?? "";
   }
 
   if (field.required && field.type !== "checklist") input.required = true;
+  // `disabled`: se muestra pre-cargado pero no se puede cambiar; `readField`
+  // sigue leyendo su `value`, así que entra igual en el payload.
+  if (field.disabled && field.type !== "checklist") input.disabled = true;
 
   // El checklist es un <div role="group">, no un control de formulario: la
   // etiqueta no puede usar `for` (no hay nada que enfocar), así que se asocia

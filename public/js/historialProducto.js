@@ -76,7 +76,7 @@ export function abrirHistorial(producto) {
       { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
       { key: "ubicacion", label: "Ubicación", render: (r) => mono(r.ubicacion) },
       { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
-      { key: "unidad_operativa_nombre", label: "Unidad operativa" },
+      { key: "unidad_operativa_nombre", label: "Establecimiento" },
       { key: "equipo_etiqueta", label: "Equipo", render: (r) => mono(r.equipo_etiqueta) },
       { key: "motivo", label: "Motivo" },
 

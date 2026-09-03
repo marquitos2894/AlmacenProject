@@ -170,15 +170,16 @@ export const PICKER_PROD_ACTIVO = {
 };
 
 export const PICKER_UNIDAD_OPERATIVA = {
-  titulo: "Elegir unidad operativa",
+  titulo: "Elegir establecimiento",
   placeholder: "Código, nombre, proyecto, ubicación, zona…",
   tabla: "vw_unidad_operativa_lista",
   campos: ["codigo", "nombre", "proyecto", "ubicacion", "zona"],
   orden: "nombre",
   icono: "unidades-operativas",
-  vacio: "Todavía no hay unidades operativas registradas.",
+  vacio: "Todavía no hay establecimientos registrados.",
   principal: (r) => r.etiqueta || r.nombre,
   detalles: (r) => [
+    { label: "Tipo", valor: r.tipo_de_establecimiento === "establecimiento_transicion" ? "Est. de transición" : "Unidad operativa" },
     { label: "Proyecto", valor: r.proyecto },
     { label: "Ubicación", valor: r.ubicacion },
     { label: "Zona", valor: r.zona },

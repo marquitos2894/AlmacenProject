@@ -240,9 +240,9 @@ function vistaEquipos(d) {
       () => tablaSimple(d.equiposPorEstado, "Estado", "Equipos")
     ),
     tarjetaGrafico(
-      "Equipos por unidad operativa", "Asignaciones vigentes",
+      "Equipos por establecimiento", "Asignaciones vigentes",
       () => barrasH(d.equiposPorUnidad, S1),
-      () => tablaSimple(d.equiposPorUnidad, "Unidad operativa", "Equipos")
+      () => tablaSimple(d.equiposPorUnidad, "Establecimiento", "Equipos")
     ),
     tarjetaGrafico(
       "Componentes por estado", "Unidades individuales por componente",

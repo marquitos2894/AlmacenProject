@@ -134,7 +134,7 @@ async function cargar(container) {
     { key: "stock_total", label: "Stock total", render: (r) => badgeStock(r.stock_total ?? 0) },
   
     {
-      key: "total_existencias", label: "Existencias",
+      key: "total_existencias", label: "Ubicaciones",
       render: (r) => el("span", {
         class: "mono", title: "Renglones de stock: un producto puede estar dividido por estado y ubicación",
         text: String(r.total_existencias ?? r.total_series ?? 0),
@@ -156,7 +156,9 @@ async function cargar(container) {
 function agrupar(rows) {
   const mapa = new Map();
   for (const r of rows) {
-    const clave = `${r.almacen_id}|${r.no_parte ?? ""}`;
+    // Sin número de parte, cada producto es su propio grupo (mismo criterio que
+    // vw_stock_agrupado): así no se juntan productos distintos en una fila.
+    const clave = `${r.almacen_id}|${r.no_parte || `prod:${r.producto_id}`}`;
     const g = mapa.get(clave) || {
       almacen_id: r.almacen_id,
       almacen_nombre: r.almacen_nombre,
@@ -215,7 +217,7 @@ function verDetalle(grupo, onCambio) {
       el("dl", { class: "ticket__meta" }, [
         el("div", {}, [el("dt", { text: "Almacén" }), el("dd", {}, [badgeAlmacen(grupo.almacen_nombre)])]),
         el("div", {}, [el("dt", { text: "Stock total" }), el("dd", { class: "mono", text: String(total) })]),
-        el("div", {}, [el("dt", { text: "Existencias" }), el("dd", { class: "mono", text: String((data || []).length) })]),
+        el("div", {}, [el("dt", { text: "Ubicaciones" }), el("dd", { class: "mono", text: String((data || []).length) })]),
       ])
     );
 

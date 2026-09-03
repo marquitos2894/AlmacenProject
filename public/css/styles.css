@@ -200,6 +200,21 @@ body.sidebar-collapsed .sidebar {
 .loading { padding: 28px; text-align: center; color: var(--text-muted); }
 .list-meta { padding: 11px 18px; color: #868ba0; font-size: 12px; border-top: 1px solid var(--hairline); font-family: var(--font-mono); }
 
+/* Celda de tabla con una línea secundaria (p. ej. serie del componente
+   bajo el nombre del producto en Movimientos). */
+.cell-stack { display: flex; flex-direction: column; gap: 2px; }
+.cell-sub { font-size: 11.5px; color: var(--text-muted); }
+
+/* Pie de lista: contador a la izquierda, paginador a la derecha. */
+.list-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 10px 18px; border-top: 1px solid var(--hairline);
+}
+.list-foot .list-meta { padding: 0; border-top: none; }
+.paginador { display: flex; align-items: center; gap: 10px; }
+.paginador__estado { font-size: 12px; color: var(--text-muted); }
+
 /* --------------------------------------------- Segmentos (dos listas)
    Control de dos posiciones para partir una lista. La pastilla activa se
    mueve con la misma curva que el resto de la interfaz.                  */
@@ -342,6 +357,14 @@ body.sidebar-collapsed .sidebar {
   transition: border-color .14s, box-shadow .14s;
 }
 .input::placeholder { color: #b3b7c4; }
+.input[readonly] {
+  background: var(--surface-2); color: var(--text-muted); cursor: not-allowed;
+}
+.input[readonly]:hover, .input[readonly]:focus { border-color: var(--border); box-shadow: none; }
+.input:disabled {
+  background: var(--surface-2); color: var(--text-muted); cursor: not-allowed; opacity: 1;
+}
+.input:disabled:hover { border-color: var(--border); }
 .input:hover { border-color: #d4d6e2; }
 .input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 textarea.input { resize: vertical; min-height: 74px; }
@@ -773,12 +796,19 @@ select.input:not([multiple]) {
   display: block; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh;
   object-fit: cover; background: #000;
 }
-/* Retícula: recuadro central translúcido que guía el encuadre. */
+/* Retícula: recuadro ancho y bajo (forma de código 1D), centrado, con línea
+   guía. El scrim oscuro alrededor concentra la vista en la franja del código. */
 .scanner__frame {
-  position: absolute; inset: 18% 12%;
-  border: 2px solid rgba(255, 255, 255, .9); border-radius: 12px;
-  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .35);
+  position: absolute; left: 7%; right: 7%; top: 50%;
+  transform: translateY(-50%);
+  aspect-ratio: 4 / 1; max-height: 34%;
+  border: 2px solid rgba(255, 255, 255, .9); border-radius: 10px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .38);
   pointer-events: none;
+}
+.scanner__frame::after {
+  content: ""; position: absolute; left: 8px; right: 8px; top: 50%;
+  height: 2px; margin-top: -1px; background: rgba(255, 90, 90, .95);
 }
 .scanner__actions {
   display: flex; justify-content: flex-end; gap: 10px;
@@ -857,26 +887,37 @@ select.input:not([multiple]) {
 }
 .etiqueta .mono { color: #111111; }
 
-/* Bloques que solo existen en el papel (p. ej. el código de barras en negro) */
-.solo-impresion { display: none; }
-
 .ticket__pie {
   margin: 14px 0 0; font-size: 11px; color: var(--text-muted); text-align: center;
 }
 
-/* Al imprimir solo sale la zona marcada. `visibility` (no `display`) conserva
-   la posición del árbol, así que basta con reubicarla al origen. */
+/* Al imprimir solo sale la zona marcada (`.zona-impresion`). Se RETIRA del árbol
+   todo lo demás — no basta con ocultarlo: `visibility:hidden` conserva la altura
+   y el navegador imprime esas páginas en blanco. Aquí se colapsa el modal a un
+   bloque en flujo y se elimina el resto de hijos de <body>. */
 @media print {
-  body.imprimiendo * { visibility: hidden; }
-  body.imprimiendo .zona-impresion,
-  body.imprimiendo .zona-impresion * { visibility: visible; }
-  body.imprimiendo .zona-impresion {
-    position: absolute; left: 0; top: 0; width: 100%;
-    border: none; padding: 0; margin: 0;
-    background: #ffffff; color: #111111;
-    box-shadow: none;
+  @page { margin: 12mm; }
+
+  html { height: auto; }
+  body.imprimiendo { height: auto; overflow: visible; background: #ffffff; }
+  body.imprimiendo > *:not(.modal-overlay) { display: none !important; }
+
+  /* El overlay del modal: sin fondo, sin centrado, sin límites de alto. */
+  body.imprimiendo .modal-overlay {
+    position: static; display: block; padding: 0; margin: 0;
+    background: none; opacity: 1; z-index: auto; overflow: visible;
   }
-  /* El papel es blanco: se neutralizan los fondos y bordes del tema. */
+  body.imprimiendo .modal {
+    width: auto; max-width: none; max-height: none;
+    border-radius: 0; box-shadow: none; overflow: visible; display: block;
+  }
+  body.imprimiendo .modal__header,
+  body.imprimiendo .modal__footer { display: none !important; }
+  body.imprimiendo .modal__form { display: block; overflow: visible; }
+  body.imprimiendo .modal__body { padding: 0; overflow: visible; }
+
+  /* La hoja: tinta negra sobre blanco, sin fondos ni bordes del tema. */
+  body.imprimiendo .zona-impresion { color: #111111; background: #ffffff; }
   body.imprimiendo .zona-impresion .ticket__head,
   body.imprimiendo .zona-impresion .ticket__obs,
   body.imprimiendo .zona-impresion .table th,
@@ -886,12 +927,14 @@ select.input:not([multiple]) {
   body.imprimiendo .zona-impresion .ticket__label,
   body.imprimiendo .zona-impresion .ticket__meta dt,
   body.imprimiendo .zona-impresion .ticket__pie { color: #5b6472; }
-  /* La versión en color del tema se queda fuera; entra la de tinta negra. */
-  body.imprimiendo .zona-impresion > .ticket__head > .barcode { display: none; }
   body.imprimiendo .zona-impresion .ticket__logo { height: 46px; margin-bottom: 10px; }
-  body.imprimiendo .zona-impresion .solo-impresion { display: block; }
   body.imprimiendo .table-wrap { overflow: visible; }
-  @page { margin: 14mm; }
+
+  /* No cortar la cabecera ni las filas entre páginas. */
+  body.imprimiendo .zona-impresion .ticket__head,
+  body.imprimiendo .zona-impresion .ticket__meta,
+  body.imprimiendo .zona-impresion .ticket__obs,
+  body.imprimiendo .zona-impresion tr { break-inside: avoid; }
 }
 
 /* --------------------------------------------------------- Subformulario */
@@ -987,8 +1030,7 @@ select.input:not([multiple]) {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card-tile__foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--hairline); }
-.card-tile__hist { flex: 1 1 120px; }
-.card-tile__hist svg, .btn--icon svg { pointer-events: none; }
+.btn--icon svg { pointer-events: none; }
 
 /* Etiqueta de unidad operativa: un color estable por unidad (índice por orden
    alfabético del catálogo). El punto usa el color de la tinta de la etiqueta. */

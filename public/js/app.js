@@ -45,7 +45,7 @@ const NAV = [
   {
     group: "Operaciones",
     items: [
-      { id: "unidades-operativas", label: "Unidades operativas", icon: "⛏️", view: unidadesOperativas },
+      { id: "unidades-operativas", label: "Establecimientos", icon: "⛏️", view: unidadesOperativas },
     ],
   },
 ];

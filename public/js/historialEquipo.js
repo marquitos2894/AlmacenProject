@@ -1,32 +1,43 @@
-// Historial de asignaciones de un equipo a unidades operativas, en modal de
+// Historial de asignaciones de un equipo a establecimientos, en modal de
 // consulta. Espejo de historialProducto.js.
 import { el, openModal, buildTable, iconButton } from "./ui.js";
 import { badgeEstado } from "./badges.js";
 
 // `ordenUnidadIds` da el color estable de cada unidad (mismo criterio que la
 // cuadrícula de tarjetas): índice por orden alfabético del catálogo.
-// `onNuevaAsignacion` (opcional): añade el botón "+ Nueva asignación" al pie.
-// `onEditarAsignacion(fila)` (opcional): añade un botón "Editar" por fila que
-// abre el mismo formulario que "Equipos por unidad operativa".
-export function abrirHistorialEquipo(equipo, asignaciones, ordenUnidadIds = [], onNuevaAsignacion = null, onEditarAsignacion = null) {
+// `onNuevaAsignacion` (opcional): botón "+ Nueva asignación", solo si el equipo
+// no tiene una asignación vigente.
+// `onEditarAsignacion(fila)` (opcional): botón "Editar" por fila.
+// `onCerrarAsignacion` (opcional): botón "Cerrar asignación vigente", solo si
+// hay una fila vigente (sin fecha de fin).
+export function abrirHistorialEquipo(equipo, asignaciones, ordenUnidadIds = [], onNuevaAsignacion = null, onEditarAsignacion = null, onCerrarAsignacion = null) {
   const titulo = [equipo.modelo, equipo.no_serie].filter(Boolean).join(" / ") || equipo.codigo || "Equipo";
   const body = el("div", { class: "modal__body" });
 
+  const hayVigente = (asignaciones || []).some((r) => !r.fecha_fin);
+  const modalActions = [];
+  if (hayVigente && onCerrarAsignacion) {
+    modalActions.push({
+      label: "Cerrar asignación vigente", class: "btn--ghost",
+      onClick: () => { close(); onCerrarAsignacion(); },
+    });
+  } else if (!hayVigente && onNuevaAsignacion) {
+    modalActions.push({
+      label: "+ Nueva asignación", class: "btn--ghost",
+      // Se cierra el historial antes de abrir el formulario: al guardar, la
+      // vista se re-renderiza y este modal quedaría con datos viejos.
+      onClick: () => { close(); onNuevaAsignacion(); },
+    });
+  }
+
   const { close } = openModal({
     title: `Historial — ${titulo}`,
-    subtitle: "Asignaciones a unidades operativas",
+    subtitle: "Asignaciones a establecimientos",
     body,
     submitLabel: "Cerrar",
     readOnly: true,
     size: "wide",
-    actions: onNuevaAsignacion
-      ? [{
-          label: "+ Nueva asignación", class: "btn--ghost",
-          // Se cierra el historial antes de abrir el formulario: al guardar, la
-          // vista se re-renderiza y este modal quedaría con datos viejos.
-          onClick: () => { close(); onNuevaAsignacion(); },
-        }]
-      : [],
+    actions: modalActions,
     onSubmit: async (cerrar) => cerrar(),
   });
 
@@ -55,7 +66,7 @@ export function abrirHistorialEquipo(equipo, asignaciones, ordenUnidadIds = [], 
   }
 
   const columnas = [
-    { key: "unidad_nombre", label: "Unidad operativa", render: (r) => tagUnidad(r.unidad_nombre, r.unidad_operativa_id, ordenUnidadIds) },
+    { key: "unidad_nombre", label: "Establecimiento", render: (r) => tagUnidad(r.unidad_nombre, r.unidad_operativa_id, ordenUnidadIds) },
     { key: "codigo_asignado", label: "Cód. asignado", render: (r) => el("span", { class: "mono", text: r.codigo_asignado || "—" }) },
     { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
     { key: "fecha_inicio", label: "Desde", render: (r) => fecha(r.fecha_inicio) },

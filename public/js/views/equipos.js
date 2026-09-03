@@ -8,7 +8,7 @@ import { supabase } from "../supabaseClient.js";
 import { puedeEditar } from "../auth.js";
 import { openForm, softDelete } from "../crud.js";
 import { abrirHistorialEquipo, tagUnidad } from "../historialEquipo.js";
-import { asignacionConfig } from "../asignacionForm.js";
+import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "../asignacionForm.js";
 import { badgeEstado } from "../badges.js";
 import { el, clear, buildTable, iconButton } from "../ui.js";
 import { icon } from "../icons.js";
@@ -36,17 +36,30 @@ let modoTabla = false;
 const norm = (s) => String(s || "").trim();
 const hoy = () => new Date().toISOString().slice(0, 10);
 
-// Config del formulario de asignación con el equipo (y la fecha de inicio)
-// precargados, para abrirlo desde una tarjeta de equipo.
-function cfgNuevaAsignacion(equipo) {
+// Acciones de asignación de un equipo, según tenga o no una asignación vigente.
+// No se puede abrir una nueva mientras haya vigente: hay que cerrarla antes.
+function accionesAsignacion(e, vig, rerender) {
+  const editable = puedeEditar();
   return {
-    ...asignacionConfig,
-    fields: asignacionConfig.fields.map((f) => {
-      if (f.name === "equipo_id") return { ...f, default: equipo.id };
-      if (f.name === "fecha_inicio") return { ...f, default: hoy() };
-      return f;
-    }),
+    onAbrir: editable && !vig ? () => openForm(cfgAbrirAsignacion(e), null, rerender) : null,
+    onCerrar: editable && vig
+      ? () => openForm(cfgCerrarAsignacion(e), { ...vig, fecha_fin: hoy() }, rerender)
+      : null,
+    onEditar: editable ? (asg) => openForm(cfgEditarAsignacion(e), asg, rerender) : null,
   };
+}
+
+// Botones de asignación para el pie de tarjeta / celda de acciones.
+function botonesAsignacion(vig, { onAbrir, onCerrar }) {
+  const btnAbrir = iconButton("Asignar a establecimiento", "btn--ghost", onAbrir, "equipos-unidad");
+  if (vig) {
+    btnAbrir.disabled = true;
+    btnAbrir.title = "Cierra la asignación vigente antes de reasignar";
+  }
+  return [
+    btnAbrir,
+    vig ? iconButton("Cerrar asignación vigente", "btn--ghost", onCerrar, "link-off") : null,
+  ].filter(Boolean);
 }
 
 export default {
@@ -58,7 +71,7 @@ export default {
       el("div", { class: "page-header" }, [
         el("div", {}, [
           el("h2", { class: "page-title", text: "Equipos" }),
-          el("p", { class: "page-subtitle", text: "Maquinaria y su asignación vigente a unidades operativas." }),
+          el("p", { class: "page-subtitle", text: "Maquinaria y su asignación vigente a establecimientos." }),
         ]),
         el("div", { class: "page-header__actions" }, [
           el("button", {
@@ -165,7 +178,7 @@ function buildFiltros(d, onChange) {
     class: "input", id: "f-eq-unidad",
     onchange: (e) => { filtros.unidad = e.target.value; onChange(); },
   }, [
-    opcion("", "Todas las unidades", filtros.unidad),
+    opcion("", "Todos los establecimientos", filtros.unidad),
     ...d.unidades.map((u) => opcion(String(u.id), u.nombre, filtros.unidad)),
     opcion("__none__", "Sin asignar", filtros.unidad),
   ]);
@@ -181,7 +194,7 @@ function buildFiltros(d, onChange) {
 
   return el("div", { class: "filters" }, [
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-eq-buscar", text: "Buscar" }), buscar]),
-    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-eq-unidad", text: "Unidad operativa" }), unidad]),
+    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-eq-unidad", text: "Establecimiento" }), unidad]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-eq-estado", text: "Estado" }), estado]),
   ]);
 }
@@ -211,17 +224,16 @@ function tarjeta(e, d, rerender) {
     vig?.codigo_asignado ? el("span", { class: "tag tag--codigo", text: vig.codigo_asignado }) : null,
   ];
 
-  const onAsignar = puedeEditar() ? () => openForm(cfgNuevaAsignacion(e), null, rerender) : null;
-  const onEditarAsig = puedeEditar() ? (asg) => openForm(asignacionConfig, asg, rerender) : null;
+  const acc = accionesAsignacion(e, vig, rerender);
 
   const foot = el("div", { class: "card-tile__foot" }, [
     el("button", {
       class: "btn btn--sm btn--ghost card-tile__hist", type: "button",
-      onclick: () => abrirHistorialEquipo(e, historial, d.ordenUnidadIds, onAsignar, onEditarAsig),
+      onclick: () => abrirHistorialEquipo(e, historial, d.ordenUnidadIds, acc.onAbrir, acc.onEditar, acc.onCerrar),
       html: `${icon("history", { size: 14, stroke: 1.8 })}<span>Ver historial</span>`,
     }),
     ...(puedeEditar() ? [
-      iconButton("Asignar a unidad operativa", "btn--ghost", onAsignar, "equipos-unidad"),
+      ...botonesAsignacion(vig, acc),
       iconButton("Editar", "btn--ghost", () => openForm(CRUD, e, rerender), "edit"),
       iconButton("Desactivar", "btn--danger-ghost", () => softDelete(CRUD, e, rerender), "deactivate"),
     ] : []),
@@ -253,7 +265,7 @@ function construirTabla(filas, d, rerender) {
     { key: "modelo", label: "Modelo" },
     { key: "marca", label: "Marca" },
     { key: "no_serie", label: "No. serie", render: (e) => el("span", { class: "mono", text: e.no_serie || "—" }) },
-    { key: "unidad", label: "Unidad operativa", render: (e) => {
+    { key: "unidad", label: "Establecimiento", render: (e) => {
         const v = d.vigentePorEquipo.get(e.id);
         return tagUnidad(v?.unidad_nombre, v?.unidad_operativa_id, d.ordenUnidadIds);
       } },
@@ -265,12 +277,12 @@ function construirTabla(filas, d, rerender) {
   ];
 
   const acciones = (e) => {
-    const onAsignar = puedeEditar() ? () => openForm(cfgNuevaAsignacion(e), null, rerender) : null;
-    const onEditarAsig = puedeEditar() ? (asg) => openForm(asignacionConfig, asg, rerender) : null;
+    const vig = d.vigentePorEquipo.get(e.id);
+    const acc = accionesAsignacion(e, vig, rerender);
     return [
-      iconButton("Ver historial", "btn--ghost", () => abrirHistorialEquipo(e, d.historialPorEquipo.get(e.id) || [], d.ordenUnidadIds, onAsignar, onEditarAsig), "history"),
+      iconButton("Ver historial", "btn--ghost", () => abrirHistorialEquipo(e, d.historialPorEquipo.get(e.id) || [], d.ordenUnidadIds, acc.onAbrir, acc.onEditar, acc.onCerrar), "history"),
       ...(puedeEditar() ? [
-        iconButton("Asignar a unidad operativa", "btn--ghost", onAsignar, "equipos-unidad"),
+        ...botonesAsignacion(vig, acc),
         iconButton("Editar", "btn--ghost", () => openForm(CRUD, e, rerender), "edit"),
         iconButton("Desactivar", "btn--danger-ghost", () => softDelete(CRUD, e, rerender), "deactivate"),
       ] : []),
