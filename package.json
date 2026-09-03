@@ -6,7 +6,8 @@
   "scripts": {
     "copy-vendor": "node -e \"const f=require('fs');f.copyFileSync('node_modules/@supabase/supabase-js/dist/umd/supabase.js','public/vendor/supabase.js');f.copyFileSync('node_modules/jsbarcode/dist/JsBarcode.all.min.js','public/vendor/jsbarcode.js');f.copyFileSync('node_modules/@zxing/library/umd/index.min.js','public/vendor/zxing.js');console.log('vendor actualizado')\"",
     "start": "serve public",
-    "dev": "serve public"
+    "dev": "serve public",
+    "dev:lan": "node scripts/dev-lan.mjs"
   },
   "dependencies": {
     "@supabase/server": "^1.4.1",
@@ -17,6 +18,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "selfsigned": "^2.4.1",
     "serve": "^14.2.4"
   }
 }

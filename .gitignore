@@ -11,5 +11,8 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Certificado local del servidor de desarrollo por HTTPS (npm run dev:lan)
+.cert/
+
 # Logs
 npm-debug.log*
