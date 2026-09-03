@@ -83,6 +83,8 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       row.no_serie ? el("div", { class: "card-tile__serie mono", text: row.no_serie }) : null,
       row.codigo_interno ? el("div", { class: "card-tile__label", text: "Cód. interno" }) : null,
       row.codigo_interno ? el("div", { class: "card-tile__serie mono", text: row.codigo_interno }) : null,
+      row.codigo_control ? el("div", { class: "card-tile__label", text: "Cód. control" }) : null,
+      row.codigo_control ? el("div", { class: "card-tile__serie mono", text: row.codigo_control }) : null,
       el("div", { class: "card-tile__label", text: "Ubicación actual" }),
       el("div", { class: "card-tile__loc" }, nodosUbicacionComponente(row)),
       el("div", { class: "card-tile__badges" }, [
@@ -123,12 +125,13 @@ export default createCrudView({
         label: "Componentes",
         hint: "se siguen por número de serie",
         table: "vw_productos_trazables",
-        searchFields: ["nombre", "no_parte", "marca", "no_serie", "codigo_interno", "codigo_barras"],
+        searchFields: ["nombre", "no_parte", "marca", "no_serie", "codigo_interno", "codigo_barras", "codigo_control"],
         card: (row, ctx) => tarjetaComponente(row, ctx),
         columns: [
           { key: "nombre", label: "Nombre" },
           { key: "no_parte", label: "No. Parte" },
           { key: "no_serie", label: "No. Serie", render: (r) => mono(r.no_serie) },
+          { key: "codigo_control", label: "Cód. control", render: (r) => mono(r.codigo_control) },
           { key: "modelo", label: "Modelo" },
           { key: "marca", label: "Marca" },
           { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },

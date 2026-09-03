@@ -169,6 +169,9 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         cantidad: n,
         estado_id: ex.estado_id,
         ubicacion: ex.ubicacion,
+        // La salida descuenta de una existencia concreta: su código de control
+        // viaja con el renglón (solo lectura) para identificar el lote.
+        codigo_control: ex.codigo_control ?? null,
         producto_almacen_id: ex.id,
       });
       toast(`“${ex.producto_nombre}” agregado al ticket.`, "success");
@@ -187,6 +190,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
           chip("No. parte", ex.no_parte),
           chip("Serie", ex.no_serie),
           chip("Ubicación", ex.ubicacion),
+          chip("Cód. control", ex.codigo_control),
           ex.estado_nombre ? el("span", { class: "badge badge--estado", text: ex.estado_nombre }) : null,
           ex.es_trazable ? el("span", { class: "badge badge--fijo", text: "Componente" }) : null,
         ]),
@@ -240,7 +244,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
     if (ids.length) {
       const { data: stocks } = await supabase
         .from("producto_almacen")
-        .select("id, producto_id, almacen_id, estado_id, ubicacion, stock_actual, almacenes(nombre)")
+        .select("id, producto_id, almacen_id, estado_id, ubicacion, codigo_control, stock_actual, almacenes(nombre)")
         .eq("activo", true)
         .in("producto_id", ids);
 
@@ -310,6 +314,15 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
       list: "ubicaciones-sugeridas",
       onclick: (e) => e.stopPropagation(),
     });
+    // Código que el proveedor asigna a la reparación (N.º de OT, etc.). Opcional.
+    // Dos entradas del mismo producto con distinto código quedan como existencias
+    // separadas: no se suman.
+    const inpControl = el("input", {
+      class: "input input--mini", type: "text", placeholder: "Cód. control…",
+      "aria-label": `Código de control de ${p.nombre}`, autocomplete: "off",
+      title: "N.º de orden de trabajo o código que asigna el proveedor a la reparación",
+      onclick: (e) => e.stopPropagation(),
+    });
     const qty = el("input", {
       class: "input input--qty", type: "number", min: "0.01", step: "any", value: "1",
       "aria-label": `Cantidad de ${p.nombre}`, onclick: (e) => e.stopPropagation(),
@@ -337,6 +350,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         cantidad: n,
         estado_id: selEstado.value ? Number(selEstado.value) : null,
         ubicacion: inpUbic.value.trim() || null,
+        codigo_control: inpControl.value.trim() || null,
         producto_almacen_id: null,
       });
       toast(`“${p.nombre}” agregado al ticket.`, "success");
@@ -365,7 +379,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         filas.length
           ? el("div", { class: "pcard__stock" }, filas.map((f) =>
               el("span", { class: "pcard__loc" }, [
-                el("span", { class: "mono", text: f.ubicacion || "sin ubicación" }),
+                el("span", { class: "mono", text: [f.ubicacion || "sin ubicación", f.codigo_control].filter(Boolean).join(" · ") }),
                 el("span", { class: "pcard__loc-qty mono", text: String(f.stock_actual) }),
               ])
             ))
@@ -379,6 +393,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
           el("span", { class: "pcard__chip-label", text: "Entra a" }),
           selEstado,
           inpUbic,
+          inpControl,
         ]),
       ]),
       el("div", { class: "pcard__side" }, [

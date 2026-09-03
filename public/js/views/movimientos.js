@@ -406,12 +406,14 @@ async function renderForm(root, almacenId) {
     });
   }
 
-  // Dos renglones son el mismo solo si coinciden producto + estado + ubicación:
-  // ese es el grano del stock, y es lo que decide si suma o crea existencia nueva.
+  // Dos renglones son el mismo solo si coinciden producto + estado + ubicación +
+  // código de control: ese es el grano del stock, y es lo que decide si suma o
+  // crea una existencia nueva.
   const mismaClave = (a, b) =>
     a.producto.id === b.producto.id &&
     (a.estado_id ?? null) === (b.estado_id ?? null) &&
-    normUbic(a.ubicacion) === normUbic(b.ubicacion);
+    normUbic(a.ubicacion) === normUbic(b.ubicacion) &&
+    normUbic(a.codigo_control) === normUbic(b.codigo_control);
 
   function agregar(item) {
     const existente = carrito.find((l) => mismaClave(l, item));
@@ -462,6 +464,7 @@ async function renderForm(root, almacenId) {
           el("th", { text: "Serie" }),
           el("th", { text: "Estado" }),
           el("th", { text: "Ubicación" }),
+          el("th", { text: "Cód. control" }),
           el("th", { class: "num", text: "Cantidad" }),
           el("th", { class: "col-actions", text: "Acciones" }),
         ]),
@@ -514,6 +517,20 @@ async function renderForm(root, almacenId) {
             },
           });
 
+      // Código de control (N.º de OT / código del proveedor). En una salida se
+      // hereda de la existencia elegida y no se toca.
+      const celdaControl = bloqueado
+        ? el("span", { class: "mono", text: linea.codigo_control || "—" })
+        : el("input", {
+            class: "input input--mini", type: "text", value: linea.codigo_control || "",
+            placeholder: "Cód. control…", autocomplete: "off",
+            "aria-label": `Código de control de ${linea.producto.nombre}`,
+            onchange: (e) => {
+              linea.codigo_control = e.target.value.trim() || null;
+              pintarCarrito();
+            },
+          });
+
       tbody.appendChild(
         el("tr", {}, [
           el("td", {}, [
@@ -527,6 +544,7 @@ async function renderForm(root, almacenId) {
           el("td", { class: "mono", text: linea.producto.no_serie || "—" }),
           el("td", {}, [celdaEstado]),
           el("td", {}, [celdaUbic]),
+          el("td", {}, [celdaControl]),
           el("td", { class: "num" }, [cant]),
           el("td", { class: "col-actions" }, [
             iconButton("Quitar", "btn--danger-ghost", () => quitar(i)),
@@ -552,15 +570,16 @@ async function renderForm(root, almacenId) {
       );
     }
 
-    // Renglones del mismo producto con distinto estado/ubicación: es válido,
-    // pero conviene avisarlo porque generará existencias separadas.
+    // Renglones del mismo producto con distinto estado/ubicación/código de
+    // control: es válido, pero conviene avisarlo porque generará existencias
+    // separadas.
     const separados = carrito
       .filter((l, i) => carrito.some((o, j) => j !== i && o.producto.id === l.producto.id))
       .map((l) => l.producto.nombre);
     if (separados.length) {
       resumen.appendChild(
         el("p", { class: "notice", role: "status" },
-          `Hay renglones del mismo producto con distinto estado o ubicación (${[...new Set(separados)].join(", ")}). Se registrarán como existencias separadas.`)
+          `Hay renglones del mismo producto con distinto estado, ubicación o código de control (${[...new Set(separados)].join(", ")}). Se registrarán como existencias separadas.`)
       );
     }
   }
@@ -585,6 +604,7 @@ async function renderForm(root, almacenId) {
           cantidad: l.cantidad,
           estado_id: l.estado_id ?? null,
           ubicacion: l.ubicacion ?? null,
+          codigo_control: l.codigo_control ?? null,
           // Presente en salidas: identifica la existencia exacta a descontar.
           producto_almacen_id: l.producto_almacen_id ?? null,
         })),
