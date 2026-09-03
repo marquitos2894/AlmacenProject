@@ -102,9 +102,10 @@ export function abrirEscaner(onCodigo) {
   // ahí se puede consultar si la cámara tiene linterna.
   video.addEventListener("playing", configurarLinterna, { once: true });
 
-  // Solo formatos 1D + TRY_HARDER: la app usa CODE-128 (etiquetas propias) y
-  // EAN/UPC (códigos de fábrica). Restringir los formatos hace que ZXing use
-  // únicamente el lector 1D y mejora bastante la precisión y la velocidad.
+  // Solo formatos 1D: la app usa CODE-128 (etiquetas propias) y EAN/UPC (códigos
+  // de fábrica). Restringir los formatos hace que ZXing use únicamente el lector
+  // 1D, sin gastar tiempo en QR/DataMatrix/PDF417. Sin TRY_HARDER: en escaneo
+  // continuo de vídeo rota la imagen y reintenta cada frame, y lo hace más lento.
   let hints;
   const { DecodeHintType, BarcodeFormat } = window.ZXing || {};
   if (DecodeHintType && BarcodeFormat) {
@@ -114,22 +115,12 @@ export function abrirEscaner(onCodigo) {
       BarcodeFormat.CODABAR, BarcodeFormat.EAN_13, BarcodeFormat.EAN_8,
       BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
     ]);
-    hints.set(DecodeHintType.TRY_HARDER, true);
   }
 
-  reader = new window.ZXing.BrowserMultiFormatReader(hints, 120);
+  reader = new window.ZXing.BrowserMultiFormatReader(hints, 250);
   reader
     .decodeFromConstraints(
-      {
-        video: {
-          facingMode: { ideal: "environment" },
-          // Todo con `ideal` / `advanced`: nunca lanza OverconstrainedError.
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
-          advanced: [{ focusMode: "continuous" }],
-        },
-      },
+      { video: { facingMode: { ideal: "environment" } } },
       video,
       (result) => {
         if (cerrado || !result) return; // sin `result` = frame sin código, se ignora
