@@ -58,6 +58,25 @@ public/                             Sitio estático
    ```
    Abre http://localhost:3000
 
+### Probar la cámara (escáner) en un móvil de la misma red
+
+El botón **Escanear** solo aparece en un **contexto seguro** (HTTPS o `localhost`): abrir la
+app por `http://<IP-del-PC>:3000` desde el teléfono no lo muestra. Para probarlo antes de
+publicar:
+
+```bash
+npm run dev:lan
+```
+
+Sirve `public/` por HTTPS en `0.0.0.0:3000` con un certificado autofirmado (se genera solo la
+primera vez en `.cert/`, ignorado por git). En el móvil, abre `https://<IP-del-PC>:3000` y
+acepta el aviso de certificado una vez; a partir de ahí la página es contexto seguro y el
+escáner funciona (Chrome/Android y Safari/iOS).
+
+Para evitar el aviso de certificado: instala [`mkcert`](https://github.com/FiloSottile/mkcert),
+genera el par y añade su CA raíz al móvil. Alternativa sin certificados: `npx ngrok http 3000`
+da una URL HTTPS pública temporal.
+
 ## Funcionalidad
 
 **Mantenimientos (CRUD, sin borrado físico — solo `activo=false`; las listas muestran solo activos):**
