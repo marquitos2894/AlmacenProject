@@ -471,6 +471,23 @@ export function buildTable(columns, rows, actions) {
   return el("div", { class: "table-wrap" }, [el("table", { class: "table" }, [thead, body])]);
 }
 
+// -------------------------------------------------------------- Paginador
+// Controles «‹ Anterior · Página X de N · Siguiente ›» para listas paginadas.
+// `onGo(nuevaPagina)` recibe el índice 0-based al que ir. Con una sola página
+// (o ninguna) no dibuja nada.
+export function buildPaginador(pagina, totalPaginas, onGo) {
+  if (totalPaginas <= 1) return el("span", {});
+  const btn = (label, destino, disabled) => el("button", {
+    class: "btn btn--ghost btn--sm", type: "button", disabled: disabled ? "" : null,
+    onclick: () => { if (!disabled) onGo(destino); },
+  }, label);
+  return el("div", { class: "paginador" }, [
+    btn("‹ Anterior", pagina - 1, pagina === 0),
+    el("span", { class: "paginador__estado mono", text: `Página ${pagina + 1} de ${totalPaginas}` }),
+    btn("Siguiente ›", pagina + 1, pagina >= totalPaginas - 1),
+  ]);
+}
+
 // `iconName` (opcional) lo convierte en un botón cuadrado con solo el icono; la
 // etiqueta pasa a tooltip y a aria-label. Sin él, se comporta como antes.
 export function iconButton(label, cls, onClick, iconName) {

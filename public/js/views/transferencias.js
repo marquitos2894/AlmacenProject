@@ -11,9 +11,10 @@ import { openProductSearch } from "../productSearch.js";
 import { mensajeError } from "../crud.js";
 import { badgeAlmacen, badgeEstado } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
-import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
+import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
+const PAGE = 50; // líneas por página en el historial
 
 // Sobrevive a los re-render de la vista (mismo criterio que Stock por almacén).
 const filtros = { almacen_id: "", q: "" };
@@ -44,9 +45,68 @@ async function renderHistorial(root) {
 
   const almacenes = await cargarAlmacenes();
   const lista = el("div", { class: "card" });
-  root.appendChild(buildFiltros(almacenes, () => cargar(lista)));
+  let pagina = 0;
+  root.appendChild(buildFiltros(almacenes, () => { pagina = 0; cargar(); }));
   root.appendChild(lista);
-  await cargar(lista);
+  await cargar();
+
+  async function cargar() {
+    clear(lista);
+    lista.appendChild(el("p", { class: "loading", text: "Cargando…" }));
+
+    // Un renglón por línea de producto, no agrupado por transferencia.
+    // Paginado en el servidor (`range` + `count`).
+    let q = supabase.from("vw_transferencia_detalle").select("*", { count: "exact" });
+    if (filtros.almacen_id) {
+      const id = Number(filtros.almacen_id);
+      q = q.or(`almacen_origen_id.eq.${id},almacen_destino_id.eq.${id}`);
+    }
+    if (filtros.q) {
+      const safe = filtros.q.replace(/[,()*]/g, " ").trim();
+      // No. de parte, nombre, código de barras y —solo componentes— serie y
+      // código interno (NULL en consumibles, así que no estorban).
+      if (safe) q = q.or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,codigo_barras.ilike.%${safe}%,no_serie.ilike.%${safe}%,codigo_interno.ilike.%${safe}%`);
+    }
+    q = q.order("created_at", { ascending: false }).order("id", { ascending: false })
+         .range(pagina * PAGE, pagina * PAGE + PAGE - 1);
+
+    const { data, error, count } = await q;
+    clear(lista);
+    if (error) {
+      lista.appendChild(el("div", { class: "alert alert--error", text: `No se pudieron cargar las transferencias: ${error.message}` }));
+      return;
+    }
+
+    const total = count ?? (data || []).length;
+    const totalPaginas = Math.max(1, Math.ceil(total / PAGE));
+    if (pagina > totalPaginas - 1) { pagina = totalPaginas - 1; return cargar(); }
+
+    const columnas = [
+      { key: "folio", label: "Folio", render: (r) => el("span", { class: "folio-tag mono", text: r.folio }) },
+      { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
+      { key: "almacen_origen_nombre", label: "Origen", render: (r) => badgeAlmacen(r.almacen_origen_nombre) },
+      { key: "almacen_destino_nombre", label: "Destino", render: (r) => badgeAlmacen(r.almacen_destino_nombre) },
+      { key: "producto_nombre", label: "Producto", render: celdaProducto },
+      { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
+      { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
+      { key: "motivo", label: "Motivo" },
+    ];
+
+    lista.appendChild(
+      buildTable(columnas, data || [], (row) => [
+        iconButton("Ver ticket", "btn--ghost", () => verTicket({ id: row.transferencia_id, folio: row.folio }), "ticket"),
+      ])
+    );
+
+    const desde = total ? pagina * PAGE + 1 : 0;
+    const hasta = Math.min(total, (pagina + 1) * PAGE);
+    lista.appendChild(
+      el("div", { class: "list-foot" }, [
+        el("p", { class: "list-meta", text: total ? `${desde}–${hasta} de ${total} línea(s) de transferencia` : "0 líneas de transferencia" }),
+        buildPaginador(pagina, totalPaginas, (p) => { pagina = p; cargar(); }),
+      ])
+    );
+  }
 }
 
 function buildFiltros(almacenes, onChange) {
@@ -81,50 +141,6 @@ function buildFiltros(almacenes, onChange) {
     ]),
     scan ? el("div", { class: "filter" }, [el("span", { class: "filter-label", text: "Código de barras" }), scan]) : null,
   ]);
-}
-
-async function cargar(container) {
-  clear(container);
-  container.appendChild(el("p", { class: "loading", text: "Cargando…" }));
-
-  // Un renglón por línea de producto, no agrupado por transferencia.
-  let q = supabase.from("vw_transferencia_detalle").select("*");
-  if (filtros.almacen_id) {
-    const id = Number(filtros.almacen_id);
-    q = q.or(`almacen_origen_id.eq.${id},almacen_destino_id.eq.${id}`);
-  }
-  if (filtros.q) {
-    const safe = filtros.q.replace(/[,()*]/g, " ").trim();
-    // No. de parte, nombre, código de barras y —solo componentes— serie y
-    // código interno (NULL en consumibles, así que no estorban).
-    if (safe) q = q.or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,codigo_barras.ilike.%${safe}%,no_serie.ilike.%${safe}%,codigo_interno.ilike.%${safe}%`);
-  }
-  q = q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300);
-
-  const { data, error } = await q;
-  clear(container);
-  if (error) {
-    container.appendChild(el("div", { class: "alert alert--error", text: `No se pudieron cargar las transferencias: ${error.message}` }));
-    return;
-  }
-
-  const columnas = [
-    { key: "folio", label: "Folio", render: (r) => el("span", { class: "folio-tag mono", text: r.folio }) },
-    { key: "fecha", label: "Fecha", render: (r) => formatFecha(r.fecha) },
-    { key: "almacen_origen_nombre", label: "Origen", render: (r) => badgeAlmacen(r.almacen_origen_nombre) },
-    { key: "almacen_destino_nombre", label: "Destino", render: (r) => badgeAlmacen(r.almacen_destino_nombre) },
-    { key: "producto_nombre", label: "Producto", render: celdaProducto },
-    { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
-    { key: "cantidad", label: "Cantidad", render: (r) => numCell(r.cantidad) },
-    { key: "motivo", label: "Motivo" },
-  ];
-
-  container.appendChild(
-    buildTable(columnas, data || [], (row) => [
-      iconButton("Ver ticket", "btn--ghost", () => verTicket({ id: row.transferencia_id, folio: row.folio }), "ticket"),
-    ])
-  );
-  container.appendChild(el("p", { class: "list-meta", text: `${(data || []).length} línea(s) de transferencia.` }));
 }
 
 // Celda "Producto": nombre y, solo para componentes, su serie o código interno.

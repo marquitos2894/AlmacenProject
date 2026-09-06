@@ -1,7 +1,7 @@
 import { supabase } from "./supabaseClient.js";
 import {
   el, clear, toast, openModal, confirmDialog,
-  buildField, readField, buildTable, iconButton,
+  buildField, readField, buildTable, iconButton, buildPaginador,
 } from "./ui.js";
 import { icon } from "./icons.js";
 import { puedeEditar } from "./auth.js";
@@ -41,6 +41,7 @@ export function createCrudView(config) {
   let segmentoActivo = config.segments?.options?.[0]?.value;
   let termino = "";
   let vistaTarjetas = true;
+  let pagina = 0; // sobrevive a los re-render (p. ej. tras guardar se sigue en la misma página)
 
   return {
     async render(root) {
@@ -67,10 +68,18 @@ export function createCrudView(config) {
 
       const listContainer = el("div", mostrarTarjetas ? {} : { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
 
+      // Solo refresca la lista (no reconstruye barra ni cabecera), para no
+      // perder el foco del buscador ni el scroll al cambiar de página.
+      const irAPagina = (p) => {
+        pagina = p;
+        refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
+      };
+
       if (config.segments) {
         root.appendChild(
           buildSegments(config.segments, segmentoActivo, (valor) => {
             segmentoActivo = valor;
+            pagina = 0; // otra pestaña, otra lista
             this.render(root);
           })
         );
@@ -80,15 +89,14 @@ export function createCrudView(config) {
         root.appendChild(
           buildSearchBar(config.search, termino, (valor) => {
             termino = valor;
-            // Solo se refresca la lista: reconstruir la barra le quitaría el
-            // foco al usuario a cada tecla.
-            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas);
+            pagina = 0; // el filtro cambió: vuelve al principio
+            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
           })
         );
       }
 
       root.appendChild(listContainer);
-      await refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas);
+      await refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
     },
   };
 }
@@ -171,15 +179,21 @@ function buildHeader(config, onNew, extra) {
   ]);
 }
 
-async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false) {
+const PAGE = 50;
+
+async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false, pagina = 0, irAPagina = null) {
   clear(container);
   // La pestaña puede leer de una vista distinta (con datos unidos); las
   // escrituras siguen yendo a config.table.
+  const orden = config.orderBy || "id";
   let query = supabase
     .from(opcion?.table || config.table)
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("activo", true)
-    .order(config.orderBy || "id", { ascending: true });
+    .order(orden, { ascending: true });
+  // Desempate por id: `nombre`/`codigo` no son únicos y sin esto la paginación
+  // podría repetir u omitir filas con el mismo valor entre páginas.
+  if (orden !== "id") query = query.order("id", { ascending: true });
 
   if (config.segments && segmentoActivo !== undefined) {
     query = query.eq(config.segments.key, segmentoActivo);
@@ -195,10 +209,12 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
     query = query.or(searchFields.map((f) => `${f}.ilike.%${busca}%`).join(","));
   }
 
+  query = query.range(pagina * PAGE, pagina * PAGE + PAGE - 1);
+
   // La lista y las etiquetas de columnas (ids -> nombres) no dependen entre
   // sí: pedirlas a la vez recorta a un solo viaje lo que antes eran varios en
   // fila, y este bloque se repite en cada cambio de pestaña y cada guardado.
-  const [{ data, error }, resolvers] = await Promise.all([
+  const [{ data, error, count }, resolvers] = await Promise.all([
     query,
     buildColumnResolvers(config),
   ]);
@@ -208,7 +224,20 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
   }
 
   const n = (data || []).length;
-  const meta = () => el("div", { class: "list-meta", text: busca ? `${n} resultado(s) para “${busca}”.` : `${n} registro(s) activos.` });
+  const total = count ?? n;
+  const totalPaginas = Math.max(1, Math.ceil(total / PAGE));
+  // Un filtro pudo dejar la página fuera de rango: se salta a la última.
+  if (pagina > totalPaginas - 1 && irAPagina) return irAPagina(totalPaginas - 1);
+
+  const desde = total ? pagina * PAGE + 1 : 0;
+  const hasta = Math.min(total, (pagina + 1) * PAGE);
+  const metaTexto = total
+    ? (busca ? `${desde}–${hasta} de ${total} resultado(s) para “${busca}”` : `${desde}–${hasta} de ${total} registro(s) activos`)
+    : (busca ? `Sin resultados para “${busca}”` : "Sin registros activos");
+  const pie = () => el("div", { class: "list-foot" }, [
+    el("p", { class: "list-meta", text: metaTexto }),
+    buildPaginador(pagina, totalPaginas, irAPagina || (() => {})),
+  ]);
 
   // Cuadrícula de tarjetas: la pestaña activa define `card(row, ctx)`.
   if (mostrarTarjetas && opcion?.card) {
@@ -225,7 +254,7 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
       for (const row of data) grid.appendChild(opcion.card(row, ctx));
       container.appendChild(grid);
     }
-    container.appendChild(meta());
+    container.appendChild(pie());
     return;
   }
 
@@ -248,7 +277,7 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
     : null;
   const table = buildTable(columns, data || [], construirAcciones);
   container.appendChild(table);
-  container.appendChild(meta());
+  container.appendChild(pie());
 }
 
 async function buildColumnResolvers(config) {

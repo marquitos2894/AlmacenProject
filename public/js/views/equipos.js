@@ -10,7 +10,7 @@ import { openForm, softDelete } from "../crud.js";
 import { abrirHistorialEquipo, tagUnidad } from "../historialEquipo.js";
 import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "../asignacionForm.js";
 import { badgeEstado } from "../badges.js";
-import { el, clear, buildTable, iconButton } from "../ui.js";
+import { el, clear, buildTable, iconButton, buildPaginador } from "../ui.js";
 import { icon } from "../icons.js";
 
 // Config mínima para reutilizar el formulario/borrado estándar del CRUD.
@@ -32,6 +32,8 @@ const CRUD = {
 // Estado que sobrevive a los re-render.
 const filtros = { unidad: "", estado: "", q: "" };
 let modoTabla = false;
+let paginaEq = 0;
+const PAGE = 50; // equipos por página (se pagina en cliente: el set es pequeño y viene ya unido)
 
 const norm = (s) => String(s || "").trim();
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -100,17 +102,29 @@ export default {
 
     clear(cont);
     const lista = el("div", {});
-    cont.appendChild(buildFiltros(data, () => pintar()));
+    cont.appendChild(buildFiltros(data, () => { paginaEq = 0; pintar(); }));
     cont.appendChild(lista);
     pintar();
 
     function pintar() {
       clear(lista);
       const filas = filtrar(data);
+      const totalPaginas = Math.max(1, Math.ceil(filas.length / PAGE));
+      if (paginaEq > totalPaginas - 1) paginaEq = totalPaginas - 1;
+      const enPagina = filas.slice(paginaEq * PAGE, paginaEq * PAGE + PAGE);
+
       lista.appendChild(
-        modoTabla ? construirTabla(filas, data, rerender) : construirGrid(filas, data, rerender)
+        modoTabla ? construirTabla(enPagina, data, rerender) : construirGrid(enPagina, data, rerender)
       );
-      lista.appendChild(el("p", { class: "list-meta", text: `${filas.length} equipo(s).` }));
+
+      const desde = filas.length ? paginaEq * PAGE + 1 : 0;
+      const hasta = Math.min(filas.length, (paginaEq + 1) * PAGE);
+      lista.appendChild(
+        el("div", { class: "list-foot" }, [
+          el("p", { class: "list-meta", text: filas.length ? `${desde}–${hasta} de ${filas.length} equipo(s)` : "0 equipos" }),
+          buildPaginador(paginaEq, totalPaginas, (p) => { paginaEq = p; pintar(); }),
+        ])
+      );
     }
   },
 };

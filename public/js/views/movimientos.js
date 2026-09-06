@@ -9,7 +9,7 @@ import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA,
 import { botonEscanear } from "../scanner.js";
 import { badgeEstado } from "../badges.js";
 import { icon } from "../icons.js";
-import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona } from "../ui.js";
+import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
 
@@ -179,18 +179,6 @@ function celdaProducto(r) {
   ]);
 }
 
-function buildPaginador(pagina, totalPaginas, onGo) {
-  if (totalPaginas <= 1) return el("span", {});
-  const btn = (label, destino, disabled) => el("button", {
-    class: "btn btn--ghost btn--sm", type: "button", disabled: disabled ? "" : null,
-    onclick: () => { if (!disabled) onGo(destino); },
-  }, label);
-  return el("div", { class: "paginador" }, [
-    btn("‹ Anterior", pagina - 1, pagina === 0),
-    el("span", { class: "paginador__estado mono", text: `Página ${pagina + 1} de ${totalPaginas}` }),
-    btn("Siguiente ›", pagina + 1, pagina >= totalPaginas - 1),
-  ]);
-}
 
 function buildFiltros(estados, onChange) {
   const noParte = el("input", {

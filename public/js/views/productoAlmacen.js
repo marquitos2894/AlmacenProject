@@ -1,16 +1,21 @@
 // Stock por almacén — SOLO CONSULTA.
-// Vista agrupada por no_parte (la suma la hace SQL) y modal con el desglose
-// de series. El stock se modifica únicamente desde Movimientos.
+// Una fila por (almacén + n.º de parte): la suma y las cuentas las hace SQL
+// (vw_stock_agrupado), paginado en el servidor. El modal "Ver detalles" abre el
+// desglose por existencia. El stock se modifica únicamente desde Movimientos.
 import { supabase } from "../supabaseClient.js";
 import { puedeEditar } from "../auth.js";
 import { mensajeError } from "../crud.js";
-import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton } from "../ui.js";
+import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, buildPaginador } from "../ui.js";
 import { badgeEstado, badgeAlmacen, badgeStock } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
 
 // Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
 // donde se ve su ubicación y se edita su estado.
 const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "", codigo_barras: "" };
+
+// Filas por página. La lista se pide al servidor de página en página
+// (`range` + `count`), nunca entera.
+const PAGE = 50;
 
 export default {
   async render(root) {
@@ -33,9 +38,82 @@ export default {
     ]);
 
     const lista = el("div", { class: "card" });
-    root.appendChild(buildFiltros({ almacenes, estados }, () => cargar(lista)));
+    let pagina = 0;
+    // Cambiar un filtro vuelve a la primera página.
+    root.appendChild(buildFiltros({ almacenes, estados }, () => { pagina = 0; cargar(); }));
     root.appendChild(lista);
-    await cargar(lista);
+    await cargar();
+
+    async function cargar() {
+      clear(lista);
+      lista.appendChild(el("p", { class: "loading", text: "Cargando…" }));
+
+      // Una sola consulta a la vista ya agregada por SQL. El grano es
+      // (almacén + n.º de parte): una fila por producto, con la suma de todo su
+      // stock y la cuenta de existencias/ubicaciones; el desglose por
+      // ubicación/estado/código de control va en "Ver detalles". Todos los
+      // filtros viajan al servidor y solo se trae la página pedida.
+      let q = supabase.from("vw_stock_agrupado").select("*", { count: "exact" }).eq("es_trazable", false);
+      if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
+      if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
+      // El estado ya no es del grano: la fila reúne todas las existencias del
+      // producto. Filtrar por estado = "tiene alguna existencia en ese estado".
+      if (filtros.estado_id) q = q.contains("estado_ids", [Number(filtros.estado_id)]);
+      if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
+      if (filtros.codigo_barras) q = q.ilike("codigo_barras", `%${filtros.codigo_barras}%`);
+      // Orden total y estable = el grano completo (más el nombre como desempate
+      // para las filas sin no. de parte), para que la paginación no salte ni
+      // repita filas entre páginas.
+      q = q.order("almacen_nombre").order("no_parte").order("producto_nombre")
+           .range(pagina * PAGE, pagina * PAGE + PAGE - 1);
+
+      const { data: filas, error, count } = await q;
+
+      clear(lista);
+      if (error) {
+        lista.appendChild(el("div", { class: "alert alert--error", text: `No se pudo cargar el stock: ${error.message}` }));
+        return;
+      }
+
+      const total = count ?? (filas || []).length;
+      const totalPaginas = Math.max(1, Math.ceil(total / PAGE));
+      // Un filtro puede dejar la página actual fuera de rango: se vuelve a la última.
+      if (pagina > totalPaginas - 1) { pagina = totalPaginas - 1; return cargar(); }
+
+      const columnas = [
+        { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
+        { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
+        { key: "producto_nombre", label: "Producto" },
+        { key: "marca", label: "Marca", render: (r) => el("span", { text: r.marca || "—" }) },
+        { key: "stock_total", label: "Stock", render: (r) => badgeStock(r.stock_total ?? 0) },
+        {
+          key: "total_existencias", label: "Existencias",
+          render: (r) => el("span", {
+            class: "mono", title: "Renglones de stock (ubicación · estado · cód. control) que suman este total; el desglose está en Ver detalles",
+            text: String(r.total_existencias ?? 0),
+          }),
+        },
+        /*{
+          key: "total_ubicaciones", label: "Ubicaciones",
+          render: (r) => el("span", { class: "mono", text: String(r.total_ubicaciones ?? 0) }),
+        },*/
+      ];
+
+      lista.appendChild(
+        buildTable(columnas, filas || [], (row) => [
+          iconButton("Ver detalles", "btn--ghost", () => verDetalle(row, () => cargar()), "search"),
+        ])
+      );
+
+      const desde = total ? pagina * PAGE + 1 : 0;
+      const hasta = Math.min(total, (pagina + 1) * PAGE);
+      lista.appendChild(
+        el("div", { class: "list-foot" }, [
+          el("p", { class: "list-meta", text: total ? `${desde}–${hasta} de ${total} fila(s) de stock` : "0 filas de stock" }),
+          buildPaginador(pagina, totalPaginas, (p) => { pagina = p; cargar(); }),
+        ])
+      );
+    }
   },
 };
 
@@ -58,8 +136,8 @@ function buildFiltros({ almacenes, estados }, onChange) {
   });
 
   // Código de barras: no hay input tecleable; se fija escaneando y se muestra
-  // como chip con "✕" para limpiarlo. Con código activo, `cargar()` consulta el
-  // detalle (vw_producto_almacen sí expone codigo_barras).
+  // como chip con "✕" para limpiarlo. Con código activo, `cargar()` filtra por
+  // la columna `codigo_barras` de vw_stock_agrupado.
   const celdaCodigo = el("div", {});
   function pintarCeldaCodigo() {
     clear(celdaCodigo);
@@ -91,128 +169,12 @@ function buildFiltros({ almacenes, estados }, onChange) {
   ]);
 }
 
-// ---------------------------------------------------------------- Lista
-async function cargar(container) {
-  clear(container);
-  container.appendChild(el("p", { class: "loading", text: "Cargando…" }));
-
-  // Estado y nombre son datos de cada existencia: la vista agregada no los
-  // expone, así que con cualquiera de ellos se consulta el detalle y se agrupa
-  // en el cliente. Sin ellos se usa la agregación de SQL, que es más barata.
-  const agrupaEnSql = !filtros.estado_id && !filtros.nombre && !filtros.codigo_barras;
-
-  let filas;
-  let error;
-  if (agrupaEnSql) {
-    let q = supabase.from("vw_stock_agrupado").select("*").eq("es_trazable", false);
-    if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
-    if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
-    q = q.order("almacen_nombre").order("no_parte");
-    ({ data: filas, error } = await q);
-  } else {
-    let q = supabase.from("vw_producto_almacen").select("*").eq("es_trazable", false);
-    if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
-    if (filtros.estado_id) q = q.eq("estado_id", filtros.estado_id);
-    if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
-    if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
-    if (filtros.codigo_barras) q = q.ilike("codigo_barras", `%${filtros.codigo_barras}%`);
-    const res = await q;
-    error = res.error;
-    filas = agrupar(res.data || []);
-  }
-
-  clear(container);
-  if (error) {
-    container.appendChild(el("div", { class: "alert alert--error", text: `No se pudo cargar el stock: ${error.message}` }));
-    return;
-  }
-
-  const columnas = [
-    { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
-    { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
-    { key: "producto_nombre", label: "Producto" },
-    { key: "codigo_control", label: "Cód. control", render: (r) => el("span", { class: "mono", text: r.codigo_control || "—" }) },
-    { key: "ubicacion", label: "Ubicación", render: (r) => el("span", { class: "mono", text: r.ubicacion || "Sin ubicación" }) },
-    { key: "estado_nombre", label: "Estado", render: (r) => (r.estado_nombre ? badgeEstado(r.estado_nombre) : el("span", { class: "mono", text: "—" })) },
-    { key: "stock_total", label: "Stock", render: (r) => badgeStock(r.stock_total ?? 0) },
-    {
-      key: "total_existencias", label: "Existencias",
-      render: (r) => el("span", {
-        class: "mono", title: "Renglones de stock que componen esta fila",
-        text: String(r.total_existencias ?? r.total_series ?? 0),
-      }),
-    },
-  ];
-
-  container.appendChild(
-    buildTable(columnas, filas || [], (row) => [
-      iconButton("Ver detalles", "btn--ghost", () => verDetalle(row, () => cargar(container)), "search"),
-    ])
-  );
-  container.appendChild(el("p", { class: "list-meta", text: `${(filas || []).length} fila(s) de stock.` }));
-}
-
-// Misma normalización que las columnas generadas `ubicacion_norm` /
-// `codigo_control_norm` de la base: así el cliente agrupa igual que SQL.
-function norm(v) {
-  return ((v ?? "") + "").trim().toUpperCase() || null;
-}
-
-// Agrupación en cliente (cuando hay filtros a nivel de ítem).
-// Replica el grano de vw_stock_agrupado: mismo n.º de parte + ubicación +
-// estado + código de control. total_series cuenta artículos físicos distintos;
-// total_existencias cuenta renglones de stock.
-function agrupar(rows) {
-  const mapa = new Map();
-  for (const r of rows) {
-    const ubicNorm = norm(r.ubicacion);
-    const ccNorm = r.codigo_control_norm ?? norm(r.codigo_control);
-    // Sin número de parte, cada producto es su propio grupo (mismo criterio que
-    // vw_stock_agrupado): así no se juntan productos distintos en una fila.
-    const clave = [
-      r.almacen_id,
-      r.no_parte || `prod:${r.producto_id}`,
-      ubicNorm ?? "",
-      r.estado_id ?? "",
-      ccNorm ?? "",
-    ].join("|");
-    const g = mapa.get(clave) || {
-      almacen_id: r.almacen_id,
-      almacen_nombre: r.almacen_nombre,
-      no_parte: r.no_parte,
-      producto_nombre: r.producto_nombre,
-      ubicacion: r.ubicacion,
-      ubicacion_norm: ubicNorm,
-      estado_id: r.estado_id ?? null,
-      estado_nombre: r.estado_nombre,
-      codigo_control: r.codigo_control,
-      stock_total: 0,
-      total_existencias: 0,
-      _productos: new Set(),
-    };
-    g.stock_total += Number(r.stock_actual) || 0;
-    g.total_existencias += 1;
-    g._productos.add(r.producto_id);
-    mapa.set(clave, g);
-  }
-  for (const g of mapa.values()) {
-    g.total_series = g._productos.size;
-    delete g._productos;
-  }
-  return [...mapa.values()].sort(
-    (a, b) => (a.almacen_nombre || "").localeCompare(b.almacen_nombre || "") ||
-              (a.no_parte || "").localeCompare(b.no_parte || "") ||
-              (a.ubicacion || "").localeCompare(b.ubicacion || "") ||
-              (a.codigo_control || "").localeCompare(b.codigo_control || "")
-  );
-}
-
 // ------------------------------------------------------- Modal detalle
 // `onCambio` refresca la lista de fondo cuando se reclasifica una existencia.
 function verDetalle(grupo, onCambio) {
-  const body = el("div", { class: "modal__body" }, [el("p", { class: "loading", text: "Cargando series…" })]);
+  const body = el("div", { class: "modal__body" }, [el("p", { class: "loading", text: "Cargando existencias…" })]);
   const { close } = openModal({
-    title: `Detalle — ${[grupo.no_parte || "Sin no. de parte", grupo.codigo_control].filter(Boolean).join(" · ")}`,
+    title: `Detalle — ${grupo.no_parte || grupo.producto_nombre || "Sin no. de parte"}`,
     body,
     submitLabel: "Cerrar",
     readOnly: true,
@@ -223,12 +185,14 @@ function verDetalle(grupo, onCambio) {
   cargarDetalle();
 
   async function cargarDetalle() {
+    // La fila de la lista reúne todas las existencias del producto en el
+    // almacén; aquí se listan una por una (cada ubicación · estado · código de
+    // control) y sus totales cuadran con la fila.
     let q = supabase.from("vw_producto_almacen").select("*").eq("almacen_id", grupo.almacen_id);
-    q = grupo.no_parte ? q.eq("no_parte", grupo.no_parte) : q.is("no_parte", null);
-    // El grano de la fila incluye estado, ubicación y código de control: se
-    // filtran los tres para que el detalle y los totales cuadren con la fila.
-    q = grupo.estado_id != null ? q.eq("estado_id", grupo.estado_id) : q.is("estado_id", null);
-    const { data: todas, error } = await q.order("no_serie");
+    q = grupo.producto_id
+      ? q.eq("producto_id", grupo.producto_id)
+      : (grupo.no_parte ? q.eq("no_parte", grupo.no_parte) : q.is("no_parte", null));
+    const { data: rows, error } = await q.order("estado_nombre").order("ubicacion");
 
     clear(body);
     if (error) {
@@ -236,22 +200,17 @@ function verDetalle(grupo, onCambio) {
       return;
     }
 
-    const ubicObjetivo = grupo.ubicacion_norm ?? norm(grupo.ubicacion);
-    const ccObjetivo = norm(grupo.codigo_control);
-    const data = (todas || []).filter(
-      (r) => norm(r.ubicacion) === ubicObjetivo &&
-             (r.codigo_control_norm ?? norm(r.codigo_control)) === ccObjetivo
-    );
-
+    const data = rows || [];
     const total = data.reduce((s, r) => s + Number(r.stock_actual || 0), 0);
+    const ubicaciones = new Set(data.map((r) => (r.ubicacion || "").trim().toUpperCase())).size;
     body.appendChild(
       el("dl", { class: "ticket__meta" }, [
         el("div", {}, [el("dt", { text: "Almacén" }), el("dd", {}, [badgeAlmacen(grupo.almacen_nombre)])]),
-        el("div", {}, [el("dt", { text: "Estado" }), el("dd", {}, [grupo.estado_nombre ? badgeEstado(grupo.estado_nombre) : el("span", { class: "mono", text: "—" })])]),
-        el("div", {}, [el("dt", { text: "Ubicación" }), el("dd", { class: "mono", text: grupo.ubicacion || "Sin ubicación" })]),
-        el("div", {}, [el("dt", { text: "Cód. control" }), el("dd", { class: "mono", text: grupo.codigo_control || "—" })]),
+        el("div", {}, [el("dt", { text: "Producto" }), el("dd", { text: grupo.producto_nombre || "—" })]),
+        el("div", {}, [el("dt", { text: "No. parte" }), el("dd", { class: "mono", text: grupo.no_parte || "Sin no. de parte" })]),
         el("div", {}, [el("dt", { text: "Stock total" }), el("dd", { class: "mono", text: String(total) })]),
         el("div", {}, [el("dt", { text: "Existencias" }), el("dd", { class: "mono", text: String(data.length) })]),
+        el("div", {}, [el("dt", { text: "Ubicaciones" }), el("dd", { class: "mono", text: String(ubicaciones) })]),
       ])
     );
 
