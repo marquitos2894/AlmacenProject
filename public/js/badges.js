@@ -38,6 +38,15 @@ export function badgeStock(cantidad, { prefijo = "" } = {}) {
   });
 }
 
+// Insignia "En Stock" / "Sin Stock": mismo criterio de color que badgeStock
+// (rojo sin existencia, verde con existencia), pero con el texto en vez de la
+// cantidad exacta — para tarjetas donde lo que importa es si hay o no, no cuánto.
+export function badgeExistencia(cantidad) {
+  const n = Number(cantidad);
+  const hay = Number.isFinite(n) && n > 0;
+  return el("span", { class: `badge badge--${hay ? "in" : "out"}`, text: hay ? "En Stock" : "Sin Stock" });
+}
+
 // Insignia de almacén: un chip con color estable por nombre (paleta tag--c1..c8).
 // Los almacenes son un catálogo sin significado semántico ni orden fijo en cada
 // llamada, así que el color sale de un hash del nombre para que sea consistente

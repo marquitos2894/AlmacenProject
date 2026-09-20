@@ -124,7 +124,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
       .select("*")
       .eq("almacen_id", almacenId)
       .gt("stock_actual", 0)
-      .or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,no_serie.ilike.%${safe}%,ubicacion.ilike.%${safe}%,codigo_barras.ilike.%${safe}%`)
+      .or(`no_parte.ilike.%${safe}%,producto_nombre.ilike.%${safe}%,no_serie.ilike.%${safe}%,ubicacion.ilike.%${safe}%,codigo_barras.ilike.%${safe}%,codigo_interno.ilike.%${safe}%`)
       .order("producto_nombre")
       .limit(25);
 
@@ -189,6 +189,7 @@ export function openProductSearch({ almacenId, almacenNombre, modo = "entrada", 
         el("div", { class: "pcard__meta" }, [
           chip("No. parte", ex.no_parte),
           chip("Serie", ex.no_serie),
+          chip("Cód. interno", ex.codigo_interno),
           chip("Ubicación", ex.ubicacion),
           chip("Cód. control", ex.codigo_control),
           ex.estado_nombre ? el("span", { class: "badge badge--estado", text: ex.estado_nombre }) : null,

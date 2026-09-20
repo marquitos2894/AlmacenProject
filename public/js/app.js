@@ -7,6 +7,7 @@ import dashboard from "./views/dashboard.js";
 import unidadesMedida from "./views/unidadesMedida.js";
 import estados from "./views/estados.js";
 import equipos from "./views/equipos.js";
+import tiposEquipo from "./views/tiposEquipo.js";
 import almacenes from "./views/almacenes.js";
 import productos from "./views/productos.js";
 import productoAlmacen from "./views/productoAlmacen.js";
@@ -40,6 +41,7 @@ const NAV = [
       { id: "unidades", label: "Unidades de medida", icon: "📏", view: unidadesMedida },
       { id: "estados", label: "Estados", icon: "🏷️", view: estados },
       { id: "equipos", label: "Equipos", icon: "⚙️", view: equipos },
+      { id: "tipos-equipo", label: "Tipos de equipo", icon: "🧰", view: tiposEquipo },
     ],
   },
   {

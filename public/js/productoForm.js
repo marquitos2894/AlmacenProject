@@ -37,8 +37,8 @@ export const productoFormConfig = {
       name: "codigo_interno", label: "Código interno", type: "text", junction: true,
       readOnly: true,
       showIf: (v) => v.es_trazable === true,
-      placeholder: "Se generará (TCH-…)",
-      hint: "Se asigna automáticamente con el patrón TCH-XXXXX; no se edita.",
+      placeholder: "Se generará (TCH-AAA-N)",
+      hint: "Se asigna automáticamente con el patrón TCH-AÑO-NUMERACIÓN (p. ej. TCH-026-001); el correlativo no tiene límite de dígitos. No se edita.",
     },
     {
       name: "modelo", label: "Modelo", type: "text", junction: true,

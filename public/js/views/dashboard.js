@@ -8,6 +8,7 @@
 // Paleta validada: #5257dd + #eb6834 pasan todos los chequeos CVD en claro.
 import { supabase } from "../supabaseClient.js";
 import { el, clear, buildTable } from "../ui.js";
+import { barrasH, wrapSvg, leyenda, barraApilada } from "../charts.js";
 
 const S1 = "#5257dd";        // índigo — serie 1 / barras de una sola serie
 const S2 = "#eb6834";        // naranja — serie 2 (salidas)
@@ -281,73 +282,6 @@ function tarjetaGrafico(titulo, subtitulo, hazGrafico, hazTabla) {
   ]);
 }
 
-// --- Barras horizontales, una sola serie (un color para todas las barras)
-function barrasH(rows, color) {
-  if (!rows.length) return el("p", { class: "dash-empty", text: "Sin datos todavía." });
-  const W = 640, rh = 34, padT = 6, padB = 6;
-  const H = padT + padB + rows.length * rh;
-  const labelW = 150, valW = 54;
-  const x0 = labelW, x1 = W - valW;
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  const svg = svgEl(W, H);
-
-  rows.forEach((r, i) => {
-    const cy = padT + i * rh + rh / 2;
-    const bw = Math.max(2, ((x1 - x0) * r.value) / max);
-    const bh = 18;
-    svg.appendChild(node("text", {
-      x: labelW - 12, y: cy, "text-anchor": "end", "dominant-baseline": "central",
-      "font-size": "12", fill: INK2,
-    }, recorta(r.label, 22)));
-    const bar = node("path", { d: barraDer(x0, cy - bh / 2, bw, bh, 4), fill: color });
-    bar.appendChild(node("title", {}, `${r.label}: ${fmt(r.value)}`));
-    svg.appendChild(bar);
-    svg.appendChild(node("text", {
-      x: x0 + bw + 8, y: cy, "dominant-baseline": "central",
-      "font-size": "12", "font-weight": "600", fill: INK, "font-variant-numeric": "tabular-nums",
-    }, fmt(r.value)));
-  });
-  // línea base
-  svg.appendChild(node("line", { x1: x0, y1: padT, x2: x0, y2: H - padB, stroke: BASE, "stroke-width": "1" }));
-  return wrapSvg(svg);
-}
-
-// --- Barra apilada única (parte-del-todo, <=6 segmentos). Un color destaca,
-// el resto en gris: es la forma "énfasis", no un pastel.
-function barraApilada(segmentos) {
-  const total = segmentos.reduce((s, x) => s + (Number(x.value) || 0), 0);
-  if (!total) return el("p", { class: "dash-empty", text: "Sin datos todavía." });
-  const W = 640, H = 60, x0 = 4, x1 = W - 4, y = 16, h = 26;
-  const svg = svgEl(W, H);
-  let x = x0;
-  segmentos.forEach((seg, i) => {
-    const w = Math.max(0, ((x1 - x0) * (Number(seg.value) || 0)) / total);
-    if (w <= 0) return;
-    const gap = i < segmentos.length - 1 ? 2 : 0; // 2px de superficie entre segmentos
-    const rect = node("rect", { x, y, width: Math.max(1, w - gap), height: h, rx: 3, fill: seg.color });
-    rect.appendChild(node("title", {}, `${seg.label}: ${fmt(seg.value)} (${Math.round((seg.value / total) * 100)}%)`));
-    svg.appendChild(rect);
-    if (w - gap > 30) {
-      svg.appendChild(node("text", {
-        x: x + (w - gap) / 2, y: y + h / 2, "text-anchor": "middle", "dominant-baseline": "central",
-        "font-size": "12", "font-weight": "700", fill: esClaro(seg.color) ? INK : "#ffffff",
-      }, fmt(seg.value)));
-    }
-    x += w;
-  });
-  return el("div", {}, [
-    leyenda(segmentos.map((s) => [s.label, s.color])),
-    wrapSvg(svg),
-  ]);
-}
-
-// ¿El color de relleno es claro? (para elegir tinta o blanco en la etiqueta)
-function esClaro(hex) {
-  const m = String(hex).replace("#", "");
-  const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
-  return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
-}
-
 // --- Columnas agrupadas: entrada (índigo) vs salida (naranja), por mes
 function columnasAgrupadas(porMes) {
   const W = 660, H = 300;
@@ -389,17 +323,6 @@ function columnasAgrupadas(porMes) {
   });
 
   return el("div", {}, [leyenda([["Entradas", S1], ["Salidas", S2]]), wrapSvg(svg)]);
-}
-
-function leyenda(items) {
-  return el("div", { class: "dash-legend" },
-    items.map(([txt, color]) =>
-      el("span", { class: "dash-legend__item" }, [
-        el("span", { class: "dash-legend__swatch", style: `background:${color}` }),
-        el("span", { text: txt }),
-      ])
-    )
-  );
 }
 
 // ------------------------------------------------------- Actividad reciente
@@ -465,14 +388,6 @@ function node(tag, attrs, text) {
   if (text != null) n.textContent = text;
   return n;
 }
-function wrapSvg(svg) {
-  return el("div", { class: "dash-chart" }, [svg]);
-}
-// Barra con extremo derecho redondeado, base cuadrada a la izquierda.
-function barraDer(x, y, w, h, r) {
-  r = Math.min(r, w, h / 2);
-  return `M${x},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} H${x} Z`;
-}
 // Columna con tope redondeado, base cuadrada abajo.
 function barraSup(x, y, w, h, r) {
   r = Math.min(r, w / 2, h);
@@ -485,10 +400,6 @@ function ticksLimpios(max, n) {
   const out = [];
   for (let v = 0; v <= max + bonito - 0.001; v += bonito) out.push(Math.round(v));
   return out.length > 1 ? out : [0, 1];
-}
-function recorta(s, n) {
-  s = String(s || "");
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 function nombreMes(clave) {
   const [y, m] = String(clave).split("-").map(Number);

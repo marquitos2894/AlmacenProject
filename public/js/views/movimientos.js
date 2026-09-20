@@ -676,12 +676,7 @@ async function verTicket(mov) {
           el("p", { class: "ticket__obs-texto", text: t.observaciones }),
         ])
       : null,
-    t.equipo_descripcion && String(t.equipo_descripcion).trim()
-      ? el("div", { class: "ticket__obs" }, [
-          el("p", { class: "ticket__label", text: "Descripción del equipo" }),
-          el("p", { class: "ticket__obs-texto", text: t.equipo_descripcion }),
-        ])
-      : null,
+
   ]);
 
   clear(body);

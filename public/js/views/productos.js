@@ -2,7 +2,7 @@ import { createCrudView } from "../crud.js";
 import { productoFormConfig } from "../productoForm.js";
 import { abrirEtiqueta } from "../barcode.js";
 import { abrirHistorial } from "../historialProducto.js";
-import { badgeEstado, badgeAlmacen, badgeChip } from "../badges.js";
+import { badgeEstado, badgeAlmacen, badgeChip, badgeExistencia } from "../badges.js";
 import { abrirCambioEstado } from "../cambioEstadoExistencia.js";
 import { iconButton, el } from "../ui.js";
 
@@ -88,11 +88,9 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       el("div", { class: "card-tile__label", text: "Ubicación actual" }),
       el("div", { class: "card-tile__loc" }, nodosUbicacionComponente(row)),
       el("div", { class: "card-tile__badges" }, [
-        // La cuenta de unidades solo tiene sentido si el componente está en
-        // inventario; sin existencia se oculta.
-        conExistencia
-          ? el("span", { class: "tag tag--codigo", text: `${unidades} unidad${unidades === 1 ? "" : "es"}` })
-          : null,
+        // "En Stock" / "Sin Stock": basta con saber si hay existencia, no la
+        // cantidad exacta (un componente casi siempre es 1 unidad).
+        badgeExistencia(unidades),
         ...compatibles.slice(0, 4).map((m) => el("span", { class: "tag tag--codigo", text: m })),
         compatibles.length > 4 ? el("span", { class: "tag tag--none", text: `+${compatibles.length - 4}` }) : null,
       ]),
