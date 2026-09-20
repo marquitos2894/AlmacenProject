@@ -2,7 +2,7 @@
 //   #/movimientos              → elegir almacén
 //   #/movimientos/{id}         → tickets de ese almacén
 //   #/movimientos/{id}/nuevo   → capturar ticket (carrito)
-import { supabase } from "../supabaseClient.js";
+import { supabase, fetchAll } from "../supabaseClient.js";
 import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
 import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
@@ -59,11 +59,16 @@ async function renderPicker(root) {
     return;
   }
 
-  // Conteo de existencias por almacén, en una sola consulta
-  const { data: stocks } = await supabase
-    .from("producto_almacen").select("almacen_id").eq("activo", true);
+  // Conteo de existencias por almacén. Se pagina con fetchAll: con más de
+  // 1000 existencias activas en total, traerlas con un solo `select` sin
+  // rango perdía en silencio las que quedaran pasado ese límite, y algún
+  // almacén con pocas existencias podía terminar mostrando "0 artículos"
+  // aunque sí tuviera registros.
+  const stocks = await fetchAll(() =>
+    supabase.from("producto_almacen").select("almacen_id").eq("activo", true)
+  );
   const conteo = new Map();
-  for (const s of stocks || []) conteo.set(s.almacen_id, (conteo.get(s.almacen_id) || 0) + 1);
+  for (const s of stocks) conteo.set(s.almacen_id, (conteo.get(s.almacen_id) || 0) + 1);
 
   for (const a of data) {
     grid.appendChild(
@@ -169,13 +174,17 @@ async function renderList(root, almacenId) {
   }
 }
 
-// Celda "Producto": nombre y, solo para componentes, su serie o código interno
-// debajo.
-function celdaProducto(r) {
-  const sub = r.es_trazable ? (r.no_serie || r.codigo_interno) : null;
+// Celda "Producto": nombre y, debajo, la serie/código interno (solo
+// componentes) y el código de control de la existencia (N.º de OT / código
+// del proveedor), cuando el producto lo tiene. En el ticket la serie ya tiene
+// su propia columna, así que ahí se omite para no repetirla (`serie: false`).
+function celdaProducto(r, { serie = true } = {}) {
+  const subs = [];
+  if (serie && r.es_trazable && (r.no_serie || r.codigo_interno)) subs.push(r.no_serie || r.codigo_interno);
+  if (r.codigo_control) subs.push(`Cód. control: ${r.codigo_control}`);
   return el("div", { class: "cell-stack" }, [
     el("div", { text: r.producto_nombre || "—" }),
-    sub ? el("div", { class: "cell-sub mono", text: sub }) : null,
+    ...subs.map((s) => el("div", { class: "cell-sub mono", text: s })),
   ]);
 }
 
@@ -676,12 +685,7 @@ async function verTicket(mov) {
           el("p", { class: "ticket__obs-texto", text: t.observaciones }),
         ])
       : null,
-    t.equipo_descripcion && String(t.equipo_descripcion).trim()
-      ? el("div", { class: "ticket__obs" }, [
-          el("p", { class: "ticket__label", text: "Descripción del equipo" }),
-          el("p", { class: "ticket__obs-texto", text: t.equipo_descripcion }),
-        ])
-      : null,
+
   ]);
 
   clear(body);
@@ -693,7 +697,7 @@ async function verTicket(mov) {
   }
 
   const columnas = [
-    { key: "producto_nombre", label: "Producto" },
+    { key: "producto_nombre", label: "Producto", render: (r) => celdaProducto(r, { serie: false }) },
     { key: "no_parte", label: "No. parte" },
     // Solo aplica a componentes: su serie o, si no la tiene, su código interno.
     { key: "no_serie", label: "Serie / cód.", render: (r) => el("span", { class: "mono", text: (r.no_serie || r.codigo_interno) || "—" }) },

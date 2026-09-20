@@ -11,7 +11,7 @@ import { botonEscanear } from "../scanner.js";
 
 // Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
 // donde se ve su ubicación y se edita su estado.
-const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "", codigo_barras: "" };
+const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "", codigo_barras: "", codigo_control: "" };
 
 // Filas por página. La lista se pide al servidor de página en página
 // (`range` + `count`), nunca entera.
@@ -61,6 +61,7 @@ export default {
       if (filtros.estado_id) q = q.contains("estado_ids", [Number(filtros.estado_id)]);
       if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
       if (filtros.codigo_barras) q = q.ilike("codigo_barras", `%${filtros.codigo_barras}%`);
+      if (filtros.codigo_control) q = q.ilike("codigos_control", `%${filtros.codigo_control}%`);
       // Orden total y estable = el grano completo (más el nombre como desempate
       // para las filas sin no. de parte), para que la paginación no salte ni
       // repita filas entre páginas.
@@ -83,7 +84,7 @@ export default {
       const columnas = [
         { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
         { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
-        { key: "producto_nombre", label: "Producto" },
+        { key: "producto_nombre", label: "Producto", render: celdaProducto },
         { key: "marca", label: "Marca", render: (r) => el("span", { text: r.marca || "—" }) },
         { key: "stock_total", label: "Stock", render: (r) => badgeStock(r.stock_total ?? 0) },
         {
@@ -117,6 +118,16 @@ export default {
   },
 };
 
+// Celda "Producto": nombre y, debajo, el/los código(s) de control de sus
+// existencias en ese almacén (la fila agrupa todo el n.º de parte, así que
+// puede haber más de uno si hay varios lotes).
+function celdaProducto(r) {
+  return el("div", { class: "cell-stack" }, [
+    el("div", { text: r.producto_nombre || "—" }),
+    r.codigos_control ? el("div", { class: "cell-sub mono", text: `Cód. control: ${r.codigos_control}` }) : null,
+  ]);
+}
+
 function buildFiltros({ almacenes, estados }, onChange) {
   const almacen = selectFiltro("f-almacen", "Todos los almacenes", almacenes, filtros.almacen_id, (v) => {
     filtros.almacen_id = v; onChange();
@@ -133,6 +144,11 @@ function buildFiltros({ almacenes, estados }, onChange) {
     class: "input", type: "search", id: "f-nombre", value: filtros.nombre,
     placeholder: "Nombre…", autocomplete: "off",
     oninput: debounce((e) => { filtros.nombre = e.target.value; onChange(); }),
+  });
+  const codigoControl = el("input", {
+    class: "input", type: "search", id: "f-codigo-control", value: filtros.codigo_control,
+    placeholder: "N.º de OT, código del proveedor…", autocomplete: "off", spellcheck: "false",
+    oninput: debounce((e) => { filtros.codigo_control = e.target.value; onChange(); }),
   });
 
   // Código de barras: no hay input tecleable; se fija escaneando y se muestra
@@ -165,6 +181,7 @@ function buildFiltros({ almacenes, estados }, onChange) {
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-no-parte", text: "No. de parte" }), noParte]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-nombre", text: "Nombre" }), nombre]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-estado", text: "Estado" }), estado]),
+    el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-codigo-control", text: "Cód. control" }), codigoControl]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", text: "Código de barras" }), celdaCodigo]),
   ]);
 }

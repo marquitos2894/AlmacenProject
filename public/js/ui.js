@@ -336,6 +336,160 @@ function buildSearchMulti(field, id, value) {
   return root;
 }
 
+// -------------------------------------------------- Combobox de selección única
+// Para filtros de página (no formularios): mismo look & feel que el buscador
+// multi-select de arriba, pero con un solo valor elegido a la vez — pensado
+// para reemplazar un <select> nativo cuando la lista de opciones es larga
+// (p. ej. establecimientos) y hace falta poder escribir para encontrar una.
+// field: { id, options: [{value,label}], value, placeholder, emptyText, onChange }
+export function buildSearchSelect(field) {
+  const options = field.options || [];
+  const id = field.id || `ssel_${Math.random().toString(36).slice(2, 9)}`;
+  let actual = field.value != null ? String(field.value) : "";
+  let filtrados = options;
+  let activo = -1;
+  let buscando = false;
+
+  const root = el("div", { class: "msearch msearch--single" });
+  const control = el("div", { class: "msearch__control" });
+  const input = el("input", {
+    id, type: "text", class: "msearch__input",
+    placeholder: field.placeholder || "Buscar…",
+    role: "combobox", "aria-expanded": "false", "aria-haspopup": "listbox",
+    "aria-controls": `${id}_listbox`, "aria-autocomplete": "list",
+    autocomplete: "off", spellcheck: "false",
+  });
+  const clearBtn = el("button", {
+    type: "button", class: "chip__remove msearch__clear", "aria-label": "Quitar filtro", html: "&times;",
+    onmousedown: (e) => e.preventDefault(),
+    onclick: () => { elegir(""); input.focus(); },
+  });
+  const caret = el("span", { class: "msearch__caret", "aria-hidden": "true" });
+  const panel = el("div", { class: "msearch__panel", role: "listbox", id: `${id}_listbox` });
+  panel.hidden = true;
+
+  control.appendChild(input);
+  control.appendChild(clearBtn);
+  control.appendChild(caret);
+  root.appendChild(control);
+  root.appendChild(panel);
+
+  const etiquetaDe = (val) => options.find((o) => String(o.value) === String(val))?.label || "";
+
+  function pintarInput() {
+    if (!buscando) input.value = etiquetaDe(actual);
+    clearBtn.hidden = !actual;
+  }
+
+  function elegir(val) {
+    actual = val == null ? "" : String(val);
+    buscando = false;
+    pintarInput();
+    cerrar();
+    field.onChange?.(actual);
+  }
+
+  function pintarPanel() {
+    clear(panel);
+    const termino = buscando ? input.value.trim().toLowerCase() : "";
+    filtrados = termino ? options.filter((o) => o.label.toLowerCase().includes(termino)) : options;
+    activo = filtrados.findIndex((o) => String(o.value) === actual);
+    if (activo < 0 && filtrados.length) activo = 0;
+
+    if (!options.length) {
+      panel.appendChild(el("p", { class: "msearch__empty", text: field.emptyText || "No hay opciones disponibles." }));
+      return;
+    }
+    if (!filtrados.length) {
+      panel.appendChild(el("p", { class: "msearch__empty", text: `Sin resultados para “${input.value.trim()}”.` }));
+      return;
+    }
+    filtrados.forEach((opt, i) => {
+      const marcado = String(opt.value) === actual;
+      panel.appendChild(
+        el("div", {
+          id: `${id}_opt_${opt.value}`, role: "option",
+          "aria-selected": marcado ? "true" : "false",
+          class: `msearch__option${marcado ? " msearch__option--selected" : ""}`,
+          style: `--i:${i}`,
+          onclick: () => elegir(opt.value),
+        }, [el("span", { class: "msearch__label", text: opt.label })])
+      );
+    });
+    marcarActivo();
+  }
+
+  function marcarActivo() {
+    const nodos = panel.querySelectorAll(".msearch__option");
+    nodos.forEach((n, i) => n.classList.toggle("msearch__option--active", i === activo));
+    if (activo >= 0 && filtrados[activo]) {
+      input.setAttribute("aria-activedescendant", `${id}_opt_${filtrados[activo].value}`);
+      nodos[activo]?.scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function abrir() {
+    if (!panel.hidden) return;
+    panel.hidden = false;
+    root.classList.add("msearch--open");
+    input.setAttribute("aria-expanded", "true");
+    pintarPanel();
+  }
+  function cerrar() {
+    if (panel.hidden) return;
+    panel.hidden = true;
+    root.classList.remove("msearch--open");
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+    buscando = false;
+    pintarInput();
+  }
+
+  control.addEventListener("mousedown", (e) => {
+    if (e.target !== input && e.target !== clearBtn) {
+      e.preventDefault();
+      input.focus();
+    }
+    abrir();
+  });
+  panel.addEventListener("mousedown", (e) => e.preventDefault());
+
+  input.addEventListener("focus", () => {
+    root.classList.add("msearch--focus");
+    buscando = true;
+    input.value = "";
+    abrir();
+  });
+  input.addEventListener("blur", () => {
+    root.classList.remove("msearch--focus");
+    cerrar();
+  });
+  input.addEventListener("input", () => { buscando = true; abrir(); pintarPanel(); });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (panel.hidden) return abrir();
+      if (filtrados.length) { activo = (activo + 1) % filtrados.length; marcarActivo(); }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (panel.hidden || !filtrados.length) return;
+      activo = (activo - 1 + filtrados.length) % filtrados.length;
+      marcarActivo();
+    } else if (e.key === "Enter") {
+      e.preventDefault(); // no debe enviar el formulario/filtro
+      if (!panel.hidden && filtrados[activo]) elegir(filtrados[activo].value);
+    } else if (e.key === "Escape") {
+      if (!panel.hidden) { e.stopPropagation(); cerrar(); input.blur(); }
+    }
+  });
+
+  pintarInput();
+  return root;
+}
+
 // ---------------------------------------------------------- Form fields
 // field: { name, label, type, options?, required?, value? }
 export function buildField(field, value) {

@@ -10,8 +10,11 @@ import { openForm, softDelete } from "../crud.js";
 import { abrirHistorialEquipo, tagUnidad } from "../historialEquipo.js";
 import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "../asignacionForm.js";
 import { badgeEstado } from "../badges.js";
-import { el, clear, buildTable, iconButton, buildPaginador } from "../ui.js";
+import { el, clear, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
 import { icon } from "../icons.js";
+import { barrasH, barraApilada } from "../charts.js";
+
+const S1 = "#5257dd"; // índigo — mismo color que usa el Panel para barras de una sola serie
 
 // Config mínima para reutilizar el formulario/borrado estándar del CRUD.
 const CRUD = {
@@ -24,6 +27,15 @@ const CRUD = {
     { name: "nombre", label: "Nombre", type: "text", hideOnEdit: true },
     { name: "modelo", label: "Modelo", type: "text", required: true },
     { name: "marca", label: "Marca", type: "text" },
+    {
+      name: "tipo_equipo_id", label: "Tipo de equipo", type: "select",
+      source: { table: "tipos_equipo", value: "id", label: "nombre" },
+      hint: "Opcional; se administra en Catálogos → Tipos de equipo.",
+    },
+    {
+      name: "anio_fabricacion", label: "Año de fabricación", type: "number",
+      placeholder: "2020", hint: "Opcional.",
+    },
     { name: "no_serie", label: "No. de serie", type: "text" },
     { name: "descripcion", label: "Descripción", type: "textarea" },
   ],
@@ -31,7 +43,11 @@ const CRUD = {
 
 // Estado que sobrevive a los re-render.
 const filtros = { unidad: "", estado: "", q: "" };
-let modoTabla = false;
+// Filtro propio del dashboard: independiente del de la lista, para poder
+// acotar el resumen a un establecimiento y/o tipo sin perder el filtro de
+// la lista de tarjetas/tabla (son pestañas distintas).
+const dashFiltros = { unidad: "", tipo: "" };
+let modo = "tarjetas"; // "tarjetas" | "tabla" | "dashboard"
 let paginaEq = 0;
 const PAGE = 50; // equipos por página (se pagina en cliente: el set es pequeño y viene ya unido)
 
@@ -76,11 +92,7 @@ export default {
           el("p", { class: "page-subtitle", text: "Maquinaria y su asignación vigente a establecimientos." }),
         ]),
         el("div", { class: "page-header__actions" }, [
-          el("button", {
-            class: "btn btn--ghost", type: "button",
-            html: `${icon(modoTabla ? "grid" : "table", { size: 15, stroke: 1.9 })}<span>${modoTabla ? "Ver tarjetas" : "Ver tabla"}</span>`,
-            onclick: () => { modoTabla = !modoTabla; rerender(); },
-          }),
+          buildTabsVista(rerender),
           puedeEditar()
             ? el("button", { class: "btn btn--primary", text: "+ Nuevo equipo", onclick: () => openForm(CRUD, null, rerender) })
             : null,
@@ -101,6 +113,12 @@ export default {
     }
 
     clear(cont);
+
+    if (modo === "dashboard") {
+      cont.appendChild(construirDashboard(data));
+      return;
+    }
+
     const lista = el("div", {});
     cont.appendChild(buildFiltros(data, () => { paginaEq = 0; pintar(); }));
     cont.appendChild(lista);
@@ -114,7 +132,7 @@ export default {
       const enPagina = filas.slice(paginaEq * PAGE, paginaEq * PAGE + PAGE);
 
       lista.appendChild(
-        modoTabla ? construirTabla(enPagina, data, rerender) : construirGrid(enPagina, data, rerender)
+        modo === "tabla" ? construirTabla(enPagina, data, rerender) : construirGrid(enPagina, data, rerender)
       );
 
       const desde = filas.length ? paginaEq * PAGE + 1 : 0;
@@ -129,18 +147,182 @@ export default {
   },
 };
 
+// Tres vistas de la misma lista: tarjetas, tabla y un resumen (dashboard).
+function buildTabsVista(rerender) {
+  const tabs = [
+    { id: "tarjetas", label: "Tarjetas", icon: "grid" },
+    { id: "tabla", label: "Tabla", icon: "table" },
+    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  ];
+  return el("div", { class: "view-tabs" }, tabs.map((t) =>
+    el("button", {
+      class: `view-tabs__btn${modo === t.id ? " view-tabs__btn--active" : ""}`,
+      type: "button",
+      html: `${icon(t.icon, { size: 14, stroke: 1.9 })}<span>${t.label}</span>`,
+      onclick: () => { modo = t.id; rerender(); },
+    })
+  ));
+}
+
+// ------------------------------------------------------------- Dashboard
+// Filtros propios + cuatro lecturas del mismo conjunto de equipos: cuánto hay
+// y cuánto está disponible, y las tres formas más útiles de repartirlo
+// (dónde están, qué tipo son, en qué estado están).
+function construirDashboard(d) {
+  const root = el("div", {});
+  const cuerpo = el("div", {});
+  const pintar = () => { clear(cuerpo); cuerpo.appendChild(cuerpoDashboard(d)); };
+  root.appendChild(buildFiltrosDashboard(d, pintar));
+  root.appendChild(cuerpo);
+  pintar();
+  return root;
+}
+
+function buildFiltrosDashboard(d, onChange) {
+  const unidad = buildSearchSelect({
+    id: "f-dash-unidad",
+    placeholder: "Buscar establecimiento…",
+    value: dashFiltros.unidad,
+    options: [
+      { value: "", label: "Todos los establecimientos" },
+      ...d.unidades.map((u) => ({ value: String(u.id), label: u.nombre })),
+      { value: "__none__", label: "Sin asignar" },
+    ],
+    onChange: (v) => { dashFiltros.unidad = v; onChange(); },
+  });
+
+  const tiposOrdenados = [...d.tipoNombrePorId.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const tipo = buildSearchSelect({
+    id: "f-dash-tipo",
+    placeholder: "Buscar tipo de equipo…",
+    value: dashFiltros.tipo,
+    options: [
+      { value: "", label: "Todos los tipos" },
+      ...tiposOrdenados.map(([id, nombre]) => ({ value: String(id), label: nombre })),
+      { value: "__none__", label: "Sin tipo" },
+    ],
+    onChange: (v) => { dashFiltros.tipo = v; onChange(); },
+  });
+
+  return el("div", { class: "filters" }, [
+    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-dash-unidad", text: "Establecimiento" }), unidad]),
+    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-dash-tipo", text: "Tipo de equipo" }), tipo]),
+  ]);
+}
+
+function filasDashboard(d) {
+  return d.equipos.filter((e) => {
+    if (dashFiltros.tipo) {
+      if (dashFiltros.tipo === "__none__") { if (e.tipo_equipo_id != null) return false; }
+      else if (String(e.tipo_equipo_id) !== dashFiltros.tipo) return false;
+    }
+    if (dashFiltros.unidad) {
+      const vig = d.vigentePorEquipo.get(e.id);
+      if (dashFiltros.unidad === "__none__") { if (vig) return false; }
+      else if (!vig || String(vig.unidad_operativa_id) !== dashFiltros.unidad) return false;
+    }
+    return true;
+  });
+}
+
+function cuerpoDashboard(d) {
+  const filas = filasDashboard(d);
+  if (!filas.length) {
+    return el("div", { class: "empty-state" }, [el("p", { text: "Ningún equipo coincide con el filtro." })]);
+  }
+
+  const porEstablecimiento = agrupaPorEstablecimiento(d, filas);
+  const porTipo = agrupaPorTipo(d, filas);
+  const porEstado = agrupaPorEstado(filas);
+  const asignados = filas.filter((e) => d.vigentePorEquipo.has(e.id)).length;
+  const disponibles = filas.length - asignados;
+  const establecimientosConEquipos = porEstablecimiento.filter((r) => r.label !== "Sin asignar").length;
+
+  return el("div", {}, [
+    el("div", { class: "kpi-row" }, [
+      kpi("Equipos", String(filas.length), `${asignados} asignado(s) · ${disponibles} disponible(s)`),
+      kpi("Tipos de equipo", String(d.tiposCount), "en el catálogo"),
+      kpi("Establecimientos con equipos", String(establecimientosConEquipos)),
+    ]),
+    el("div", { class: "dash-grid" }, [
+      tarjetaDashboard(
+        "Asignación de equipos", "Con asignación vigente frente a disponibles",
+        barraApilada([
+          { label: "Asignados", value: asignados, color: S1 },
+          { label: "Disponibles", value: disponibles, color: "#c9cde0" },
+        ])
+      ),
+      tarjetaDashboard(
+        "Equipos por establecimiento", "Según la asignación vigente de cada equipo",
+        barrasH(porEstablecimiento, S1)
+      ),
+      tarjetaDashboard("Equipos por tipo", "Clasificación registrada en el equipo", barrasH(porTipo, S1)),
+      tarjetaDashboard("Equipos por estado", "Estado actual del equipo", barrasH(porEstado, S1)),
+    ]),
+  ]);
+}
+
+function tarjetaDashboard(titulo, subtitulo, grafico) {
+  return el("section", { class: "dash-card" }, [
+    el("div", { class: "dash-card__head" }, [
+      el("div", {}, [
+        el("h3", { class: "dash-card__title", text: titulo }),
+        el("p", { class: "dash-card__sub", text: subtitulo }),
+      ]),
+    ]),
+    el("div", { class: "dash-card__body" }, [grafico]),
+  ]);
+}
+
+function kpi(label, value, sub) {
+  return el("div", { class: "kpi" }, [
+    el("span", { class: "kpi__label", text: label }),
+    el("span", { class: "kpi__value", text: value }),
+    sub ? el("span", { class: "kpi__sub", text: sub }) : null,
+  ]);
+}
+
+function agrupaPorEstablecimiento(d, filas) {
+  const m = new Map();
+  for (const e of filas) {
+    const vig = d.vigentePorEquipo.get(e.id);
+    const clave = vig ? (vig.unidad_nombre || "—") : "Sin asignar";
+    m.set(clave, (m.get(clave) || 0) + 1);
+  }
+  return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function agrupaPorTipo(d, filas) {
+  const m = new Map();
+  for (const e of filas) {
+    const clave = d.tipoNombrePorId.get(e.tipo_equipo_id) || "Sin tipo";
+    m.set(clave, (m.get(clave) || 0) + 1);
+  }
+  return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function agrupaPorEstado(filas) {
+  const m = new Map();
+  for (const e of filas) {
+    const clave = norm(e.estado_actual) || "Sin estado";
+    m.set(clave, (m.get(clave) || 0) + 1);
+  }
+  return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
 // ------------------------------------------------------------- Datos
 async function cargarDatos() {
-  const [equipos, asignaciones, unidades] = await Promise.all([
+  const [equipos, asignaciones, unidades, tipos] = await Promise.all([
     supabase.from("equipos").select("*").eq("activo", true).order("modelo"),
     supabase
       .from("vw_equipo_unidad_operativa")
       .select("id, equipo_id, unidad_operativa_id, unidad_nombre, codigo_asignado, estado_id, estado_nombre, fecha_inicio, fecha_fin, horometro_inicial, horometro_final, observacion, vigente")
       .order("fecha_inicio", { ascending: false }),
     supabase.from("unidad_operativa").select("id, nombre").eq("activo", true).order("nombre"),
+    supabase.from("tipos_equipo").select("id, nombre").eq("activo", true).order("nombre"),
   ]);
 
-  const err = equipos.error || asignaciones.error || unidades.error;
+  const err = equipos.error || asignaciones.error || unidades.error || tipos.error;
   if (err) throw err;
 
   const vigentePorEquipo = new Map();
@@ -158,6 +340,8 @@ async function cargarDatos() {
     ordenUnidadIds: uns.map((u) => u.id),
     vigentePorEquipo,
     historialPorEquipo,
+    tipoNombrePorId: new Map((tipos.data || []).map((t) => [t.id, t.nombre])),
+    tiposCount: (tipos.data || []).length,
   };
 }
 
@@ -188,14 +372,17 @@ function buildFiltros(d, onChange) {
     oninput: debounce((e) => { filtros.q = e.target.value; onChange(); }),
   });
 
-  const unidad = el("select", {
-    class: "input", id: "f-eq-unidad",
-    onchange: (e) => { filtros.unidad = e.target.value; onChange(); },
-  }, [
-    opcion("", "Todos los establecimientos", filtros.unidad),
-    ...d.unidades.map((u) => opcion(String(u.id), u.nombre, filtros.unidad)),
-    opcion("__none__", "Sin asignar", filtros.unidad),
-  ]);
+  const unidad = buildSearchSelect({
+    id: "f-eq-unidad",
+    placeholder: "Buscar establecimiento…",
+    value: filtros.unidad,
+    options: [
+      { value: "", label: "Todos los establecimientos" },
+      ...d.unidades.map((u) => ({ value: String(u.id), label: u.nombre })),
+      { value: "__none__", label: "Sin asignar" },
+    ],
+    onChange: (v) => { filtros.unidad = v; onChange(); },
+  });
 
   const estados = [...new Set(d.equipos.map((e) => norm(e.estado_actual)).filter(Boolean))].sort();
   const estado = el("select", {
@@ -232,10 +419,12 @@ function construirGrid(filas, d, rerender) {
 function tarjeta(e, d, rerender) {
   const vig = d.vigentePorEquipo.get(e.id);
   const historial = d.historialPorEquipo.get(e.id) || [];
+  const tipoNombre = d.tipoNombrePorId.get(e.tipo_equipo_id);
 
   const badges = [
     tagUnidad(vig?.unidad_nombre, vig?.unidad_operativa_id, d.ordenUnidadIds),
     vig?.codigo_asignado ? el("span", { class: "tag tag--codigo", text: vig.codigo_asignado }) : null,
+    tipoNombre ? el("span", { class: "tag tag--codigo", text: tipoNombre }) : null,
   ];
 
   const acc = accionesAsignacion(e, vig, rerender);
@@ -264,6 +453,8 @@ function tarjeta(e, d, rerender) {
       ]),
       el("div", { class: "card-tile__label", text: "N.º serie" }),
       el("div", { class: "card-tile__serie mono", text: e.no_serie || "—" }),
+      e.anio_fabricacion ? el("div", { class: "card-tile__label", text: "Año de fabricación" }) : null,
+      e.anio_fabricacion ? el("div", { class: "card-tile__serie mono", text: String(e.anio_fabricacion) }) : null,
       el("div", { class: "card-tile__badges" }, badges),
       e.descripcion ? el("p", { class: "card-tile__desc", text: e.descripcion }) : null,
     ]),
@@ -279,6 +470,8 @@ function construirTabla(filas, d, rerender) {
     { key: "modelo", label: "Modelo" },
     { key: "marca", label: "Marca" },
     { key: "no_serie", label: "No. serie", render: (e) => el("span", { class: "mono", text: e.no_serie || "—" }) },
+    { key: "tipo_equipo_id", label: "Tipo", render: (e) => el("span", { text: d.tipoNombrePorId.get(e.tipo_equipo_id) || "—" }) },
+    { key: "anio_fabricacion", label: "Año", render: (e) => el("span", { class: "mono", text: e.anio_fabricacion ? String(e.anio_fabricacion) : "—" }) },
     { key: "unidad", label: "Establecimiento", render: (e) => {
         const v = d.vigentePorEquipo.get(e.id);
         return tagUnidad(v?.unidad_nombre, v?.unidad_operativa_id, d.ordenUnidadIds);

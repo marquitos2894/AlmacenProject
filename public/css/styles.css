@@ -276,7 +276,13 @@ body.sidebar-collapsed .sidebar {
 }
 .filter { display: flex; flex-direction: column; gap: 5px; }
 .filter-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
-.filter--primary .input { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.filter--primary .input,
+.filter--primary .msearch__control { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+
+/* Combobox de un solo valor (buildSearchSelect): mismo cuerpo que el
+   multi-select, sin chips; solo aparece la "x" cuando hay algo elegido. */
+.msearch--single .msearch__clear { flex-shrink: 0; }
+.msearch__clear[hidden] { display: none; }
 
 /* --------------------------------------------------------- Tabla */
 .table-wrap { overflow-x: auto; }
@@ -949,6 +955,18 @@ select.input:not([multiple]) {
 .subform { padding: 6px 2px; }
 .subform__title { font-size: 15px; margin-bottom: 14px; }
 .subform__footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+/* ------------------------------------------------- Pestañas de vista (Equipos) */
+.view-tabs { display: inline-flex; gap: 3px; padding: 3px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.view-tabs__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-muted); font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.view-tabs__btn:hover { color: var(--text); }
+.view-tabs__btn--active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.view-tabs__btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 /* --------------------------------------------------------- Panel (dashboard) */
 .kpi-row {

@@ -6,7 +6,8 @@
 // mientras haya una vigente:
 //   - cfgAbrirAsignacion  → alta de una asignación nueva (solo si no hay vigente)
 //   - cfgCerrarAsignacion → poner fecha de fin a la asignación vigente
-//   - cfgEditarAsignacion → corregir código asignado / fecha de inicio / estado
+//   - cfgEditarAsignacion → corregir código asignado / fecha de inicio /
+//                           horómetro inicial / estado / observación
 //
 // Las tres las consume `openForm` (crud.js) con `.insert()` / `.update()`
 // directos sobre `equipo_unidad_operativa`.
@@ -46,6 +47,12 @@ const campoEstado = {
 
 const campoObservacion = { name: "observacion", label: "Observación", type: "textarea" };
 
+const campoHorometroInicial = {
+  name: "horometro_inicial", label: "Horómetro inicial", type: "number",
+  placeholder: "Lectura al asignar",
+  hint: "Horas de la máquina al entrar a ese establecimiento. Opcional.",
+};
+
 const BASE = { table: "equipo_unidad_operativa", singular: "asignación de equipo", touchUpdatedAt: true };
 
 // --- Abrir: alta de una asignación nueva -----------------------------------
@@ -59,11 +66,7 @@ export function cfgAbrirAsignacion(equipo) {
       campoEstablecimiento(),
       campoCodigoAsignado,
       { name: "fecha_inicio", label: "Fecha de inicio", type: "date", required: true, default: hoy() },
-      {
-        name: "horometro_inicial", label: "Horómetro inicial", type: "number",
-        placeholder: "Lectura al asignar",
-        hint: "Horas de la máquina al entrar a ese establecimiento. Opcional.",
-      },
+      campoHorometroInicial,
       campoEstado,
       campoObservacion,
     ],
@@ -93,7 +96,8 @@ export function cfgCerrarAsignacion(equipo) {
   };
 }
 
-// --- Editar: solo código asignado, fecha de inicio y estado --------------
+// --- Editar: código asignado, fecha de inicio, horómetro inicial,
+// observación y estado (equipo y establecimiento quedan fijos) -----------
 export function cfgEditarAsignacion(equipo) {
   return {
     ...BASE,
@@ -104,7 +108,9 @@ export function cfgEditarAsignacion(equipo) {
       campoEstablecimiento({ disabled: true }),
       campoCodigoAsignado,
       { name: "fecha_inicio", label: "Fecha de inicio", type: "date", required: true },
+      campoHorometroInicial,
       campoEstado,
+      campoObservacion,
     ],
   };
 }

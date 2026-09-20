@@ -1,0 +1,117 @@
+// Utilidades de gráfico compartidas (SVG, sin librerías). Nace del Panel para
+// que otras vistas con su propia pestaña "Dashboard" (p. ej. Equipos) puedan
+// dibujar el mismo tipo de barra horizontal sin duplicar el código.
+import { el } from "./ui.js";
+
+const INK = "#1f2333";
+const INK2 = "#737890";
+const BASE = "#d4d6e2";
+
+const nf = new Intl.NumberFormat("es-PE");
+export const fmtNum = (n) => nf.format(Math.round(Number(n) || 0));
+
+export function svgEl(w, h) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  s.setAttribute("width", "100%");
+  s.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  s.setAttribute("role", "img");
+  s.style.display = "block";
+  return s;
+}
+
+export function svgNode(tag, attrs, text) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+export function wrapSvg(svg) {
+  return el("div", { class: "dash-chart" }, [svg]);
+}
+
+// Barra con extremo derecho redondeado, base cuadrada a la izquierda.
+function barraDer(x, y, w, h, r) {
+  r = Math.min(r, w, h / 2);
+  return `M${x},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} H${x} Z`;
+}
+
+function recorta(s, n) {
+  s = String(s || "");
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+export function leyenda(items) {
+  return el("div", { class: "dash-legend" },
+    items.map(([txt, color]) =>
+      el("span", { class: "dash-legend__item" }, [
+        el("span", { class: "dash-legend__swatch", style: `background:${color}` }),
+        el("span", { text: txt }),
+      ])
+    )
+  );
+}
+
+// ¿El color de relleno es claro? (para elegir tinta o blanco en la etiqueta)
+function esClaro(hex) {
+  const m = String(hex).replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
+}
+
+// Barra apilada única (parte-del-todo, <=6 segmentos). Un color destaca, el
+// resto en gris: es la forma "énfasis", no un pastel.
+export function barraApilada(segmentos, fmt = fmtNum) {
+  const total = segmentos.reduce((s, x) => s + (Number(x.value) || 0), 0);
+  if (!total) return el("p", { class: "dash-empty", text: "Sin datos todavía." });
+  const W = 640, H = 60, x0 = 4, x1 = W - 4, y = 16, h = 26;
+  const svg = svgEl(W, H);
+  let x = x0;
+  segmentos.forEach((seg, i) => {
+    const w = Math.max(0, ((x1 - x0) * (Number(seg.value) || 0)) / total);
+    if (w <= 0) return;
+    const gap = i < segmentos.length - 1 ? 2 : 0; // 2px de superficie entre segmentos
+    const rect = svgNode("rect", { x, y, width: Math.max(1, w - gap), height: h, rx: 3, fill: seg.color });
+    rect.appendChild(svgNode("title", {}, `${seg.label}: ${fmt(seg.value)} (${Math.round((seg.value / total) * 100)}%)`));
+    svg.appendChild(rect);
+    if (w - gap > 30) {
+      svg.appendChild(svgNode("text", {
+        x: x + (w - gap) / 2, y: y + h / 2, "text-anchor": "middle", "dominant-baseline": "central",
+        "font-size": "12", "font-weight": "700", fill: esClaro(seg.color) ? INK : "#ffffff",
+      }, fmt(seg.value)));
+    }
+    x += w;
+  });
+  return el("div", {}, [leyenda(segmentos.map((s) => [s.label, s.color])), wrapSvg(svg)]);
+}
+
+// Barras horizontales, una sola serie (un color para todas las barras).
+export function barrasH(rows, color, fmt = fmtNum) {
+  if (!rows.length) return el("p", { class: "dash-empty", text: "Sin datos todavía." });
+  const W = 640, rh = 34, padT = 6, padB = 6;
+  const H = padT + padB + rows.length * rh;
+  const labelW = 150, valW = 54;
+  const x0 = labelW, x1 = W - valW;
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  const svg = svgEl(W, H);
+
+  rows.forEach((r, i) => {
+    const cy = padT + i * rh + rh / 2;
+    const bw = Math.max(2, ((x1 - x0) * r.value) / max);
+    const bh = 18;
+    svg.appendChild(svgNode("text", {
+      x: labelW - 12, y: cy, "text-anchor": "end", "dominant-baseline": "central",
+      "font-size": "12", fill: INK2,
+    }, recorta(r.label, 22)));
+    const bar = svgNode("path", { d: barraDer(x0, cy - bh / 2, bw, bh, 4), fill: color });
+    bar.appendChild(svgNode("title", {}, `${r.label}: ${fmt(r.value)}`));
+    svg.appendChild(bar);
+    svg.appendChild(svgNode("text", {
+      x: x0 + bw + 8, y: cy, "dominant-baseline": "central",
+      "font-size": "12", "font-weight": "600", fill: INK, "font-variant-numeric": "tabular-nums",
+    }, fmt(r.value)));
+  });
+  svg.appendChild(svgNode("line", { x1: x0, y1: padT, x2: x0, y2: H - padB, stroke: BASE, "stroke-width": "1" }));
+  return wrapSvg(svg);
+}
