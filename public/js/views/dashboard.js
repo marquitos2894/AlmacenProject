@@ -6,7 +6,7 @@
 //   · dos series por mes  -> columnas agrupadas (índigo entrada / naranja salida)
 //   · actividad reciente  -> tabla
 // Paleta validada: #5257dd + #eb6834 pasan todos los chequeos CVD en claro.
-import { supabase } from "../supabaseClient.js";
+import { supabase, fetchAll } from "../supabaseClient.js";
 import { el, clear, buildTable } from "../ui.js";
 import { barrasH, wrapSvg, leyenda, barraApilada } from "../charts.js";
 
@@ -63,12 +63,18 @@ async function cargarDatos() {
   const d30 = hace(30), d60 = hace(60), d180 = hace(182);
 
   const [
-    productos, existencias, movsRecientes, movsPeriodo, detalle,
+    componentesCount, consumiblesCount, exs, movsRecientes, movsPeriodo, detalle,
     almacenesCount, proveedoresCount, movs30, movsPrev30,
     equipos, asignaciones, compUnidades,
   ] = await Promise.all([
-    supabase.from("productos").select("es_trazable").eq("activo", true),
-    supabase.from("vw_producto_almacen").select("stock_actual, almacen_nombre, estado_nombre"),
+    // Conteos exactos (head: true), no listas: con >1000 productos activos,
+    // traer las filas y contarlas en el cliente perdía en silencio todo lo
+    // que quedara pasado el límite de 1000 filas por consulta de PostgREST.
+    supabase.from("productos").select("*", { count: "exact", head: true }).eq("activo", true).eq("es_trazable", true),
+    supabase.from("productos").select("*", { count: "exact", head: true }).eq("activo", true).eq("es_trazable", false),
+    // Aquí sí hacen falta las filas (se suma stock_actual por grupo), y las
+    // existencias activas también pueden superar las 1000: se pagina con fetchAll.
+    fetchAll(() => supabase.from("vw_producto_almacen").select("stock_actual, almacen_nombre, estado_nombre")),
     supabase.from("vw_movimientos").select("folio, fecha, tipo_movimiento, es_stock_inicial, almacen_nombre, total_cantidad, created_at").order("created_at", { ascending: false }).limit(8),
     supabase.from("movimientos").select("fecha, tipo_movimiento").gte("fecha", d180),
     supabase.from("vw_movimiento_detalle").select("producto_nombre, cantidad").limit(2000),
@@ -81,12 +87,10 @@ async function cargarDatos() {
     supabase.from("vw_producto_unidad_lista").select("estado_nombre, producto_nombre"),
   ]);
 
-  const err = productos.error || existencias.error || movsRecientes.error || movsPeriodo.error
+  const err = componentesCount.error || consumiblesCount.error || movsRecientes.error || movsPeriodo.error
     || detalle.error || equipos.error || asignaciones.error || compUnidades.error;
   if (err) throw err;
 
-  const prods = productos.data || [];
-  const exs = existencias.data || [];
   const eqs = equipos.data || [];
   const asigs = asignaciones.data || [];
   const cus = compUnidades.data || [];
@@ -126,9 +130,9 @@ async function cargarDatos() {
 
   return {
     totalStock: exs.reduce((s, r) => s + (Number(r.stock_actual) || 0), 0),
-    totalProductos: prods.length,
-    consumibles: prods.filter((p) => !p.es_trazable).length,
-    componentes: prods.filter((p) => p.es_trazable).length,
+    totalProductos: (consumiblesCount.count ?? 0) + (componentesCount.count ?? 0),
+    consumibles: consumiblesCount.count ?? 0,
+    componentes: componentesCount.count ?? 0,
     almacenes: almacenesCount.count ?? 0,
     proveedores: proveedoresCount.count ?? 0,
     movs30: movs30.count ?? 0,
