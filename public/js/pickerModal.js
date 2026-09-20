@@ -157,14 +157,20 @@ export const PICKER_PROD_ACTIVO = {
   placeholder: "Descripción, serie, código interno, producto…",
   tabla: "vw_producto_unidad_lista",
   campos: ["descripcion", "no_serie", "codigo_interno", "producto_nombre", "no_parte", "modelo"],
-  orden: "descripcion",
+  orden: "producto_nombre",
   icono: "wrench",
   vacio: "Todavía no hay unidades registradas.",
-  principal: (r) => r.descripcion || r.producto_nombre,
+  // Título: nombre del producto (lo que lo identifica para una persona) y,
+  // junto, su serie o —si no tiene— su código interno (lo que identifica
+  // ESA unidad física). "R1300/TCH-026-001" solo (el modelo) era ilegible.
+  principal: (r) => {
+    const ident = r.no_serie || r.codigo_interno;
+    return ident ? `${r.producto_nombre} · ${ident}` : r.producto_nombre;
+  },
+  // Descripción secundaria: no. de parte y ubicación de la existencia.
   detalles: (r) => [
-    { label: "Producto", valor: r.producto_nombre },
-    { label: "Serie", valor: r.no_serie },
-    { label: "Cód. interno", valor: r.codigo_interno },
+    { label: "No. parte", valor: r.no_parte },
+    { label: "Ubicación", valor: r.ubicacion },
     { label: "Estado", valor: r.estado_nombre },
   ],
 };

@@ -333,7 +333,12 @@ async function renderForm(root, almacenId) {
     etiqueta: "Producto Activo", icono: "wrench", textoBoton: "Elegir producto activo",
     config: PICKER_PROD_ACTIVO,
     onElegir: (row) => { referencias.id_producto_unidad = row?.id ?? null; },
-    describir: (row) => row.descripcion || row.producto_nombre,
+    // Mismo criterio que el picker: producto + serie/código interno, no la
+    // `descripcion` cruda (modelo/serie), que sin el nombre es ilegible.
+    describir: (row) => {
+      const ident = row.no_serie || row.codigo_interno;
+      return ident ? `${row.producto_nombre} · ${ident}` : row.producto_nombre;
+    },
   });
 
   const refProveedor = buildReferencia({
