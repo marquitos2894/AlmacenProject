@@ -8,7 +8,7 @@
 // Paleta validada: #5257dd + #eb6834 pasan todos los chequeos CVD en claro.
 import { supabase, fetchAll } from "../supabaseClient.js";
 import { el, clear, buildTable } from "../ui.js";
-import { barrasH, wrapSvg, leyenda, barraApilada } from "../charts.js";
+import { barrasH, wrapSvg, leyenda, barraApilada, tarjetaGrafico, tablaSimple } from "../charts.js";
 
 const S1 = "#5257dd";        // índigo — serie 1 / barras de una sola serie
 const S2 = "#eb6834";        // naranja — serie 2 (salidas)
@@ -261,31 +261,6 @@ function seccion(texto) {
   return el("h3", { class: "dash-section-title", text: texto });
 }
 
-// Tarjeta con conmutador gráfico <-> tabla (todo gráfico tiene su gemela en tabla).
-function tarjetaGrafico(titulo, subtitulo, hazGrafico, hazTabla) {
-  const cuerpo = el("div", { class: "dash-card__body" }, [hazGrafico()]);
-  let mostrandoTabla = false;
-  const toggle = el("button", {
-    class: "dash-card__toggle", type: "button", text: "Ver tabla",
-    onclick: () => {
-      mostrandoTabla = !mostrandoTabla;
-      clear(cuerpo);
-      cuerpo.appendChild(mostrandoTabla ? hazTabla() : hazGrafico());
-      toggle.textContent = mostrandoTabla ? "Ver gráfico" : "Ver tabla";
-    },
-  });
-  return el("section", { class: "dash-card" }, [
-    el("div", { class: "dash-card__head" }, [
-      el("div", {}, [
-        el("h3", { class: "dash-card__title", text: titulo }),
-        el("p", { class: "dash-card__sub", text: subtitulo }),
-      ]),
-      toggle,
-    ]),
-    cuerpo,
-  ]);
-}
-
 // --- Columnas agrupadas: entrada (índigo) vs salida (naranja), por mes
 function columnasAgrupadas(porMes) {
   const W = 660, H = 300;
@@ -359,12 +334,6 @@ function badgeTipo(r) {
 }
 
 // ------------------------------------------------------------- Tablas gemelas
-function tablaSimple(rows, c1, c2) {
-  return buildTable(
-    [{ key: "label", label: c1 }, { key: "value", label: c2, render: (r) => el("span", { class: "mono", text: fmt(r.value) }) }],
-    rows, null
-  );
-}
 function tablaMeses(porMes) {
   return buildTable(
     [

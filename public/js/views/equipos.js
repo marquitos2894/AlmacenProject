@@ -12,7 +12,7 @@ import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "..
 import { badgeEstado } from "../badges.js";
 import { el, clear, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
 import { icon } from "../icons.js";
-import { barrasH, barraApilada } from "../charts.js";
+import { barrasH, barraApilada, tarjetaGrafico, tablaSimple } from "../charts.js";
 
 const S1 = "#5257dd"; // índigo — mismo color que usa el Panel para barras de una sola serie
 
@@ -46,7 +46,7 @@ const filtros = { unidad: "", estado: "", q: "" };
 // Filtro propio del dashboard: independiente del de la lista, para poder
 // acotar el resumen a un establecimiento y/o tipo sin perder el filtro de
 // la lista de tarjetas/tabla (son pestañas distintas).
-const dashFiltros = { unidad: "", tipo: "" };
+const dashFiltros = { unidad: "", tipo: "", modelo: "" };
 let modo = "tarjetas"; // "tarjetas" | "tabla" | "dashboard"
 let paginaEq = 0;
 const PAGE = 50; // equipos por página (se pagina en cliente: el set es pequeño y viene ya unido)
@@ -204,9 +204,22 @@ function buildFiltrosDashboard(d, onChange) {
     onChange: (v) => { dashFiltros.tipo = v; onChange(); },
   });
 
+  const modelosOrdenados = [...new Set(d.equipos.map((e) => norm(e.modelo)).filter(Boolean))].sort();
+  const modelo = buildSearchSelect({
+    id: "f-dash-modelo",
+    placeholder: "Buscar modelo…",
+    value: dashFiltros.modelo,
+    options: [
+      { value: "", label: "Todos los modelos" },
+      ...modelosOrdenados.map((m) => ({ value: m, label: m })),
+    ],
+    onChange: (v) => { dashFiltros.modelo = v; onChange(); },
+  });
+
   return el("div", { class: "filters" }, [
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-dash-unidad", text: "Establecimiento" }), unidad]),
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-dash-tipo", text: "Tipo de equipo" }), tipo]),
+    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-dash-modelo", text: "Modelo" }), modelo]),
   ]);
 }
 
@@ -221,6 +234,7 @@ function filasDashboard(d) {
       if (dashFiltros.unidad === "__none__") { if (vig) return false; }
       else if (!vig || String(vig.unidad_operativa_id) !== dashFiltros.unidad) return false;
     }
+    if (dashFiltros.modelo && norm(e.modelo) !== dashFiltros.modelo) return false;
     return true;
   });
 }
@@ -234,6 +248,7 @@ function cuerpoDashboard(d) {
   const porEstablecimiento = agrupaPorEstablecimiento(d, filas);
   const porTipo = agrupaPorTipo(d, filas);
   const porEstado = agrupaPorEstado(filas);
+  const porModelo = agrupaPorModelo(filas);
   const asignados = filas.filter((e) => d.vigentePorEquipo.has(e.id)).length;
   const disponibles = filas.length - asignados;
   const establecimientosConEquipos = porEstablecimiento.filter((r) => r.label !== "Sin asignar").length;
@@ -242,35 +257,42 @@ function cuerpoDashboard(d) {
     el("div", { class: "kpi-row" }, [
       kpi("Equipos", String(filas.length), `${asignados} asignado(s) · ${disponibles} disponible(s)`),
       kpi("Tipos de equipo", String(d.tiposCount), "en el catálogo"),
+      kpi("Modelos distintos", String(porModelo.length)),
       kpi("Establecimientos con equipos", String(establecimientosConEquipos)),
     ]),
     el("div", { class: "dash-grid" }, [
-      tarjetaDashboard(
+      tarjetaGrafico(
         "Asignación de equipos", "Con asignación vigente frente a disponibles",
-        barraApilada([
+        () => barraApilada([
           { label: "Asignados", value: asignados, color: S1 },
           { label: "Disponibles", value: disponibles, color: "#c9cde0" },
-        ])
+        ]),
+        () => tablaSimple(
+          [{ label: "Asignados", value: asignados }, { label: "Disponibles", value: disponibles }],
+          "Equipos", "Cantidad"
+        )
       ),
-      tarjetaDashboard(
+      tarjetaGrafico(
         "Equipos por establecimiento", "Según la asignación vigente de cada equipo",
-        barrasH(porEstablecimiento, S1)
+        () => barrasH(porEstablecimiento, S1),
+        () => tablaSimple(porEstablecimiento, "Establecimiento", "Equipos")
       ),
-      tarjetaDashboard("Equipos por tipo", "Clasificación registrada en el equipo", barrasH(porTipo, S1)),
-      tarjetaDashboard("Equipos por estado", "Estado actual del equipo", barrasH(porEstado, S1)),
+      tarjetaGrafico(
+        "Equipos por modelo", "Cuántos equipos hay de cada modelo",
+        () => barrasH(porModelo, S1),
+        () => tablaSimple(porModelo, "Modelo", "Equipos")
+      ),
+      tarjetaGrafico(
+        "Equipos por tipo", "Clasificación registrada en el equipo",
+        () => barrasH(porTipo, S1),
+        () => tablaSimple(porTipo, "Tipo", "Equipos")
+      ),
+      tarjetaGrafico(
+        "Equipos por estado", "Estado actual del equipo",
+        () => barrasH(porEstado, S1),
+        () => tablaSimple(porEstado, "Estado", "Equipos")
+      ),
     ]),
-  ]);
-}
-
-function tarjetaDashboard(titulo, subtitulo, grafico) {
-  return el("section", { class: "dash-card" }, [
-    el("div", { class: "dash-card__head" }, [
-      el("div", {}, [
-        el("h3", { class: "dash-card__title", text: titulo }),
-        el("p", { class: "dash-card__sub", text: subtitulo }),
-      ]),
-    ]),
-    el("div", { class: "dash-card__body" }, [grafico]),
   ]);
 }
 
@@ -296,6 +318,15 @@ function agrupaPorTipo(d, filas) {
   const m = new Map();
   for (const e of filas) {
     const clave = d.tipoNombrePorId.get(e.tipo_equipo_id) || "Sin tipo";
+    m.set(clave, (m.get(clave) || 0) + 1);
+  }
+  return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+function agrupaPorModelo(filas) {
+  const m = new Map();
+  for (const e of filas) {
+    const clave = norm(e.modelo) || "Sin modelo";
     m.set(clave, (m.get(clave) || 0) + 1);
   }
   return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);

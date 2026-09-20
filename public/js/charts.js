@@ -1,7 +1,7 @@
 // Utilidades de gráfico compartidas (SVG, sin librerías). Nace del Panel para
 // que otras vistas con su propia pestaña "Dashboard" (p. ej. Equipos) puedan
 // dibujar el mismo tipo de barra horizontal sin duplicar el código.
-import { el } from "./ui.js";
+import { el, clear, buildTable } from "./ui.js";
 
 const INK = "#1f2333";
 const INK2 = "#737890";
@@ -40,6 +40,43 @@ function barraDer(x, y, w, h, r) {
 function recorta(s, n) {
   s = String(s || "");
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+// Tabla gemela de un gráfico de barras de una sola serie: mismas dos
+// columnas (etiqueta, valor) que espera el toggle de `tarjetaGrafico`.
+export function tablaSimple(rows, c1, c2, fmt = fmtNum) {
+  return buildTable(
+    [{ key: "label", label: c1 }, { key: "value", label: c2, render: (r) => el("span", { class: "mono", text: fmt(r.value) }) }],
+    rows, null
+  );
+}
+
+// Tarjeta con conmutador gráfico <-> tabla: todo gráfico tiene su gemela en
+// tabla, para quien prefiera leer números exactos en vez de barras.
+// `hazGrafico`/`hazTabla` son funciones (no nodos ya construidos) porque el
+// toggle vuelve a llamarlas en cada clic, sin recordar el nodo anterior.
+export function tarjetaGrafico(titulo, subtitulo, hazGrafico, hazTabla) {
+  const cuerpo = el("div", { class: "dash-card__body" }, [hazGrafico()]);
+  let mostrandoTabla = false;
+  const toggle = el("button", {
+    class: "dash-card__toggle", type: "button", text: "Ver tabla",
+    onclick: () => {
+      mostrandoTabla = !mostrandoTabla;
+      clear(cuerpo);
+      cuerpo.appendChild(mostrandoTabla ? hazTabla() : hazGrafico());
+      toggle.textContent = mostrandoTabla ? "Ver gráfico" : "Ver tabla";
+    },
+  });
+  return el("section", { class: "dash-card" }, [
+    el("div", { class: "dash-card__head" }, [
+      el("div", {}, [
+        el("h3", { class: "dash-card__title", text: titulo }),
+        el("p", { class: "dash-card__sub", text: subtitulo }),
+      ]),
+      toggle,
+    ]),
+    cuerpo,
+  ]);
 }
 
 export function leyenda(items) {
