@@ -123,10 +123,10 @@ async function renderList(root, almacenId) {
     let q = supabase.from("vw_movimiento_detalle").select("*", { count: "exact" }).eq("almacen_id", almacenId);
     if (filtros.no_parte) {
       const t = filtros.no_parte.replace(/[,()*]/g, " ").trim();
-      // Busca en no. de parte, código de barras y —solo componentes— serie y
-      // código interno (las dos últimas son NULL en consumibles, así que no
-      // estorban).
-      if (t) q = q.or(`no_parte.ilike.%${t}%,codigo_barras.ilike.%${t}%,no_serie.ilike.%${t}%,codigo_interno.ilike.%${t}%`);
+      // Busca en no. de parte, código de barras, código de control y —solo
+      // componentes— serie y código interno (estas últimas son NULL en
+      // consumibles, así que no estorban).
+      if (t) q = q.or(`no_parte.ilike.%${t}%,codigo_barras.ilike.%${t}%,codigo_control.ilike.%${t}%,no_serie.ilike.%${t}%,codigo_interno.ilike.%${t}%`);
     }
     if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
     if (filtros.estado_id) q = q.eq("estado_id", Number(filtros.estado_id));
@@ -192,7 +192,7 @@ function celdaProducto(r, { serie = true } = {}) {
 function buildFiltros(estados, onChange) {
   const noParte = el("input", {
     class: "input", type: "search", id: "f-no-parte", value: filtros.no_parte,
-    placeholder: "No. de parte, serie, código…", autocomplete: "off", spellcheck: "false",
+    placeholder: "No. de parte, serie, código, cód. control…", autocomplete: "off", spellcheck: "false",
     oninput: debounce((e) => { filtros.no_parte = e.target.value; onChange(); }),
   });
   const scan = botonEscanear((codigo) => {
