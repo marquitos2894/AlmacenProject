@@ -47,8 +47,12 @@ function editarEstadoComponente(row, onDone) {
 
 // Tarjeta de componente (producto trazable), al estilo de la vista Equipos.
 function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
-  const unidades = Number(row.unidades) || 0;
   const compatibles = (row.equipos_compatible || "").split(",").map((s) => s.trim()).filter(Boolean);
+  // `row.producto_almacen_id` solo viene de una existencia ACTIVA en
+  // producto_almacen (stock real, por una entrada de Movimientos). No
+  // confundir con `row.unidades`: eso cuenta el registro de identidad del
+  // componente (producto_unidad, serie/código interno), que se crea al dar
+  // de alta el producto — antes de que exista cualquier stock.
   const conExistencia = !!row.producto_almacen_id;
 
   const btnEstado = iconButton(
@@ -90,7 +94,7 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       el("div", { class: "card-tile__badges" }, [
         // "En Stock" / "Sin Stock": basta con saber si hay existencia, no la
         // cantidad exacta (un componente casi siempre es 1 unidad).
-        badgeExistencia(unidades),
+        badgeExistencia(conExistencia ? 1 : 0),
         ...compatibles.slice(0, 4).map((m) => el("span", { class: "tag tag--codigo", text: m })),
         compatibles.length > 4 ? el("span", { class: "tag tag--none", text: `+${compatibles.length - 4}` }) : null,
       ]),
