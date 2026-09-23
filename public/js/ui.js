@@ -49,7 +49,9 @@ export function toast(message, type = "info") {
 // ---------------------------------------------------------------- Modal
 // readOnly: para modales de consulta (ticket, detalle) — un solo botón Cerrar.
 // actions: botones extra en el pie, p. ej. [{ label: "Imprimir", onClick }].
-export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [] }) {
+// `danger`: para acciones irreversibles (anular, etc.) — el botón de submit
+// se pinta en rojo en vez del azul primario, mismo criterio que `confirmDialog`.
+export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [], danger = false }) {
   const overlay = el("div", { class: "modal-overlay" });
   const closeBtn = el("button", { class: "modal__close", type: "button", html: "&times;", "aria-label": "Cerrar" });
   const form = el("form", { class: "modal__form" });
@@ -62,7 +64,7 @@ export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guar
         onclick: a.onClick,
       })
     ),
-    el("button", { type: "submit", class: "btn btn--primary", text: submitLabel }),
+    el("button", { type: "submit", class: `btn ${danger ? "btn--danger" : "btn--primary"}`, text: submitLabel }),
   ]);
 
   form.appendChild(body);
@@ -658,14 +660,35 @@ export function iconButton(label, cls, onClick, iconName) {
 // ------------------------------------------------------------ Impresión
 // Manda al papel solo el elemento marcado con `.zona-impresion`; el resto de
 // la página se oculta por CSS mientras dura la impresión.
-export function imprimirZona() {
+//
+// `pageSize` (opcional, p. ej. "76mm 50mm"): tickets y etiquetas comparten
+// este mismo `window.print()`, y `@page` no se puede acotar con un selector
+// CSS — es una regla de página, no de elemento. Para que la etiqueta pueda
+// pedir un tamaño de papel distinto al del ticket, se inyecta un `<style>`
+// con su propio `@page` justo antes de imprimir y se retira después. Sin
+// `pageSize` el comportamiento es el de siempre (tamaño de página por
+// defecto del navegador).
+export function imprimirZona({ pageSize, margin } = {}) {
+  let estilo;
+  if (pageSize) {
+    estilo = el("style", { text: `@page { size: ${pageSize}; margin: ${margin ?? "0mm"}; }` });
+    document.head.appendChild(estilo);
+  }
   document.body.classList.add("imprimiendo");
   const limpiar = () => {
     document.body.classList.remove("imprimiendo");
+    estilo?.remove();
     window.removeEventListener("afterprint", limpiar);
   };
   window.addEventListener("afterprint", limpiar);
   window.print();
-  // Safari no siempre dispara afterprint: red de seguridad.
-  setTimeout(limpiar, 1500);
+  // Safari no siempre dispara afterprint: red de seguridad para no dejar la
+  // página atascada en modo impresión. En 1.5s no alcanza: `window.print()`
+  // no bloquea en todos los navegadores, así que si el usuario tarda en
+  // elegir la impresora o ajustar algo en el diálogo, ese timeout borraría
+  // el `imprimiendo` y el `@page` inyectado ANTES de imprimir de verdad
+  // (volviendo, para la etiqueta, al tamaño de página por defecto). Un
+  // minuto es tiempo de sobra para cualquier diálogo real y sigue evitando
+  // que la app quede atascada si `afterprint` nunca dispara.
+  setTimeout(limpiar, 60000);
 }

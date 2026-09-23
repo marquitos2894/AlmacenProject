@@ -7,6 +7,7 @@ import { getCurrentUsuario, puedeEditar } from "../auth.js";
 import { openProductSearch } from "../productSearch.js";
 import { openPicker, PICKER_PROD_ACTIVO, PICKER_EQUIPO, PICKER_UNIDAD_OPERATIVA, PICKER_PROVEEDOR } from "../pickerModal.js";
 import { botonEscanear } from "../scanner.js";
+import { mensajeError } from "../crud.js";
 import { badgeEstado } from "../badges.js";
 import { icon } from "../icons.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
@@ -159,7 +160,7 @@ async function renderList(root, almacenId) {
     lista.appendChild(
       buildTable(columnas, data || [], (row) => [
         iconButton("Ver ticket", "btn--ghost",
-          () => verTicket({ id: row.movimiento_id, folio: row.folio, almacen_nombre: almacen.nombre }), "ticket"),
+          () => verTicket({ id: row.movimiento_id, folio: row.folio, almacen_nombre: almacen.nombre, anulado: row.anulado }, cargar), "ticket"),
       ])
     );
 
@@ -633,15 +634,25 @@ async function renderForm(root, almacenId) {
 // =====================================================================
 // Ticket (modal de detalle)
 // =====================================================================
-async function verTicket(mov) {
+async function verTicket(mov, onAnulado) {
   const body = el("div", { class: "modal__body" }, [el("p", { class: "loading", text: "Cargando ticket…" })]);
-  openModal({
+  const { close } = openModal({
     title: "Ticket de movimiento",
     body,
     submitLabel: "Cerrar",
     readOnly: true,
     size: "wide",
-    actions: [{ label: "Imprimir", onClick: () => imprimirZona() }],
+    // `mov.anulado` ya viene de la fila de la lista (síncrono): no hace
+    // falta esperar la relectura de abajo para decidir si mostrar el botón.
+    actions: [
+      { label: "Imprimir", onClick: () => imprimirZona() },
+      ...(puedeEditar() && !mov.anulado
+        ? [{
+            label: "Anular movimiento", class: "btn--danger-ghost",
+            onClick: () => abrirAnularMovimiento(mov, () => { close(); onAnulado?.(); }),
+          }]
+        : []),
+    ],
     onSubmit: async (close) => close(),
   });
 
@@ -673,6 +684,9 @@ async function verTicket(mov) {
     ["Establecimiento", unidadOp],
     ["Proyecto / zona", ubicacionOp],
     ["Registró", t.usuario_nombre],
+    ["Anulado", t.anulado
+      ? [t.anulado_en ? formatFecha(t.anulado_en) : null, t.anulado_motivo].filter(Boolean).join(" — ") || "Sí"
+      : null],
   ].filter(([, v]) => v != null && String(v).trim() !== "");
 
   // Todo lo que va al papel vive dentro de este contenedor.
@@ -715,6 +729,42 @@ async function verTicket(mov) {
   hoja.appendChild(
     el("p", { class: "ticket__pie", text: `${(data || []).length} Items en Total · impreso desde Gestión de Almacén` })
   );
+}
+
+// Anular un movimiento: revierte su efecto en el stock (RPC
+// `anular_movimiento`, retroactiva y todo-o-nada) pero conserva el
+// registro, marcado como anulado. `onListo` cierra el ticket y refresca la
+// lista de fondo.
+function abrirAnularMovimiento(mov, onListo) {
+  const motivoInput = el("textarea", { class: "input", rows: "3", placeholder: "Opcional…" });
+  const cuerpo = el("div", { class: "modal__body" }, [
+    el("p", {}, [
+      document.createTextNode(
+        `Se revertirá el efecto en el stock del ticket "${mov.folio}". El movimiento queda marcado como anulado, no se borra. Esta acción no se puede deshacer desde la app.`
+      ),
+    ]),
+    el("div", { class: "form-row" }, [
+      el("label", { class: "form-label", for: "f-anular-motivo", text: "Motivo de la anulación" }),
+      Object.assign(motivoInput, { id: "f-anular-motivo" }),
+    ]),
+  ]);
+
+  openModal({
+    title: "Anular movimiento",
+    body: cuerpo,
+    submitLabel: "Anular movimiento",
+    danger: true,
+    onSubmit: async (close) => {
+      const { error } = await supabase.rpc("anular_movimiento", {
+        p_movimiento_id: mov.id,
+        p_motivo: motivoInput.value.trim() || null,
+      });
+      if (error) throw new Error(mensajeError(error));
+      toast("Movimiento anulado.", "success");
+      close();
+      onListo?.();
+    },
+  });
 }
 
 function metaItem(label, value) {
@@ -780,6 +830,7 @@ async function loadEstados() {
 }
 
 function tipoBadge(row) {
+  if (row.anulado) return el("span", { class: "badge badge--muted", text: "Anulado" });
   if (row.es_stock_inicial) return el("span", { class: "badge badge--inicial", text: "Stock inicial" });
   const salida = row.tipo_movimiento === "salida";
   return el("span", { class: `badge ${salida ? "badge--out" : "badge--in"}`, text: salida ? "Salida" : "Entrada" });

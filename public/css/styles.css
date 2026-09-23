@@ -949,6 +949,20 @@ select.input:not([multiple]) {
   body.imprimiendo .zona-impresion .ticket__meta,
   body.imprimiendo .zona-impresion .ticket__obs,
   body.imprimiendo .zona-impresion tr { break-inside: avoid; }
+
+  /* Etiqueta de producto: acotada a la etiqueta física (76×50mm, XPrinter
+     420B). `imprimirZona()` ya pide ese mismo tamaño de página para este
+     flujo (ver barcode.js); aquí se hace que el contenido quepa dentro,
+     en vez de solo confiar en que la página lo recorte. */
+  body.imprimiendo .etiqueta {
+    width: 76mm; height: 50mm; box-sizing: border-box;
+    padding: 3mm; border: none; border-radius: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    align-items: center; gap: 1.5mm;
+    page-break-inside: avoid;
+  }
+  body.imprimiendo .etiqueta__nombre { font-size: 12px; margin: 0 0 2mm; }
+  body.imprimiendo .etiqueta__datos { gap: 8px; margin-bottom: 4px; }
 }
 
 /* --------------------------------------------------------- Subformulario */

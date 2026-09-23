@@ -56,7 +56,7 @@ export function abrirEtiqueta(producto) {
       esComponente && producto.codigo_interno ? dato("Cód. interno", producto.codigo_interno) : null,
       producto.marca ? dato("Marca", producto.marca) : null,
     ]),
-    renderBarcodeLabel(producto.codigo_barras, { height: 70, lineColor: "#111111" }),
+    renderBarcodeLabel(producto.codigo_barras, { height: 50, lineColor: "#111111" }),
   ]);
 
   const body = el("div", { class: "modal__body" }, [
@@ -69,7 +69,10 @@ export function abrirEtiqueta(producto) {
     body,
     submitLabel: "Imprimir",
     readOnly: true,
-    onSubmit: async () => imprimirZona(),
+    // 76×50mm: el tamaño real del rollo de etiquetas (XPrinter 420B). Sin
+    // esto la etiqueta imprime a tamaño de página por defecto y se
+    // desborda a una segunda etiqueta física.
+    onSubmit: async () => imprimirZona({ pageSize: "76mm 50mm", margin: "0mm" }),
   });
 }
 
