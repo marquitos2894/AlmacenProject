@@ -94,6 +94,11 @@ function construirCuerpo(d) {
       // después de filtrar.
       ...(hayFiltroComponentesActivo() ? [tarjetaListaCompacta(filas)] : []),
       tarjetaGrafico(
+        "Componentes por modelo", "Cuántos componentes hay de cada modelo",
+        () => barrasH(porModelo, S1),
+        () => tablaSimple(porModelo, "Modelo", "Componentes")
+      ),
+      tarjetaGrafico(
         "En stock vs. sin stock", "Tiene o no una existencia activa registrada",
         () => barraApilada([
           { label: "En stock", value: enStock, color: S1 },
@@ -103,11 +108,6 @@ function construirCuerpo(d) {
           [{ label: "En stock", value: enStock }, { label: "Sin stock", value: sinStock }],
           "Existencia", "Componentes"
         )
-      ),
-      tarjetaGrafico(
-        "Componentes por modelo", "Cuántos componentes hay de cada modelo",
-        () => barrasH(porModelo, S1),
-        () => tablaSimple(porModelo, "Modelo", "Componentes")
       ),
       tarjetaGrafico(
         "Componentes por tipo de producto", "Clasificación del catálogo Tipos de producto",
