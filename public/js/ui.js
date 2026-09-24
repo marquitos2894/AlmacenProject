@@ -385,10 +385,14 @@ export function buildSearchSelect(field) {
 
   function elegir(val) {
     actual = val == null ? "" : String(val);
+    root.value = actual; // para poder usarlo como campo de formulario genérico (buildField/readField)
     buscando = false;
     pintarInput();
     cerrar();
     field.onChange?.(actual);
+    // Un <select> nativo dispara "change" al elegir; se replica aquí para que
+    // aplicarCondicionales() (crud.js) reaccione igual que con cualquier otro campo.
+    root.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   function pintarPanel() {
@@ -488,6 +492,7 @@ export function buildSearchSelect(field) {
     }
   });
 
+  root.value = actual;
   pintarInput();
   return root;
 }
@@ -520,6 +525,14 @@ export function buildField(field, value) {
     }
   } else if (field.type === "checklist") {
     input = buildSearchMulti(field, id, v);
+  } else if (field.type === "select-search") {
+    // Igual que "select" (una sola llave foránea), pero con el buscador de
+    // buildSearchSelect en vez de un <select> nativo — para catálogos donde
+    // conviene poder escribir en vez de desplazarse por la lista.
+    input = buildSearchSelect({
+      id, value: v, options: field.options || [],
+      placeholder: field.placeholder, emptyText: field.emptyText,
+    });
   } else if (field.type === "checkbox") {
     // Interruptor: el <input> real sigue siendo la casilla (lo lee readField y
     // lo observan los campos condicionales); la pista visual es el <span>.
@@ -586,7 +599,7 @@ export function readField(field, input) {
   const raw = input.value.trim();
   if (raw === "") return null;
   if (field.type === "number") return Number(raw);
-  if (field.type === "select" && !isNaN(Number(raw))) return Number(raw);
+  if ((field.type === "select" || field.type === "select-search") && !isNaN(Number(raw))) return Number(raw);
   return raw;
 }
 

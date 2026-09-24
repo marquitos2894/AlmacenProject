@@ -152,3 +152,49 @@ export function barrasH(rows, color, fmt = fmtNum) {
   svg.appendChild(svgNode("line", { x1: x0, y1: padT, x2: x0, y2: H - padB, stroke: BASE, "stroke-width": "1" }));
   return wrapSvg(svg);
 }
+
+// Columna con tope redondeado, base cuadrada abajo.
+function columnaSup(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
+}
+
+// Barras verticales (columnas), una sola serie. Pensadas para pocas
+// categorías con etiquetas cortas: a diferencia de barrasH (donde el nombre
+// va al costado y puede ser largo), aquí va debajo de cada columna y un
+// texto largo se solaparía con el vecino.
+export function columnasV(rows, color, fmt = fmtNum) {
+  if (!rows.length) return el("p", { class: "dash-empty", text: "Sin datos todavía." });
+  const W = 640, H = 300;
+  const padL = 10, padR = 10, padT = 24, padB = 40;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  const svg = svgEl(W, H);
+  const baseY = padT + plotH;
+
+  svg.appendChild(svgNode("line", { x1: padL, y1: baseY, x2: W - padR, y2: baseY, stroke: BASE, "stroke-width": "1" }));
+
+  const bandW = plotW / rows.length;
+  const colW = Math.min(56, bandW * 0.55);
+  const maxCaracteres = Math.max(6, Math.floor(bandW / 7));
+
+  rows.forEach((r, i) => {
+    const cx = padL + i * bandW + bandW / 2;
+    const h = Math.max(2, (plotH * r.value) / max);
+    const y = baseY - h;
+    const bar = svgNode("path", { d: columnaSup(cx - colW / 2, y, colW, h, 4), fill: color });
+    bar.appendChild(svgNode("title", {}, `${r.label}: ${fmt(r.value)}`));
+    svg.appendChild(bar);
+    if (h > 16) {
+      svg.appendChild(svgNode("text", {
+        x: cx, y: y - 6, "text-anchor": "middle",
+        "font-size": "12", "font-weight": "600", fill: INK, "font-variant-numeric": "tabular-nums",
+      }, fmt(r.value)));
+    }
+    svg.appendChild(svgNode("text", {
+      x: cx, y: baseY + 16, "text-anchor": "middle", "font-size": "11", fill: INK2,
+    }, recorta(r.label, maxCaracteres)));
+  });
+
+  return wrapSvg(svg);
+}

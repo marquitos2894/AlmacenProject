@@ -15,6 +15,7 @@ const PATHS = {
   estados: '<path d="M4 12V5a1 1 0 0 1 1-1h7l8 8-8 8-8-8Z"/><circle cx="8.5" cy="8.5" r="1.4"/>',
   equipos: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v3M12 17.5v3M5.5 5.5l2 2M16.5 16.5l2 2M3.5 12h3M17.5 12h3M5.5 18.5l2-2M16.5 7.5l2-2"/>',
   "tipos-equipo": '<path d="M15.4 5.4a4.5 4.5 0 0 0-5.9 5.9l-5 5a1.6 1.6 0 0 0 2.3 2.3l5-5a4.5 4.5 0 0 0 5.9-5.9l-2.5 2.5-2.1-.4-.4-2.1 2.7-2.8Z"/>',
+  "tipos-producto": '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
   "unidades-operativas": '<path d="M4 15a8 8 0 0 1 16 0"/><path d="M10 8V5h4v3"/><path d="M3 15h18v3H3z"/>',
   "equipos-unidad": '<path d="M9 12h6"/><path d="M9 12a3 3 0 0 0-3-3H5a3 3 0 0 0 0 6h1a3 3 0 0 0 3-3Z"/><path d="M15 12a3 3 0 0 1 3-3h1a3 3 0 0 1 0 6h-1a3 3 0 0 1-3-3Z"/>',
   "link-off": '<path d="M10 14 8.5 15.5a3 3 0 0 1-4-4L6 10M14 10l1.5-1.5a3 3 0 0 1 4 4L18 14"/><path d="m4 4 16 16"/>',

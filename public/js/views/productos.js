@@ -5,6 +5,8 @@ import { abrirHistorial } from "../historialProducto.js";
 import { badgeEstado, badgeAlmacen, badgeChip, badgeExistencia } from "../badges.js";
 import { abrirCambioEstado } from "../cambioEstadoExistencia.js";
 import { iconButton, el } from "../ui.js";
+import { renderDashboardComponentes } from "./productosComponentesDashboard.js";
+import { buildFiltrosComponentes, cargarOpcionesFiltroComponentes, aplicarFiltrosComponentesQuery } from "./productosComponentesFiltros.js";
 
 // Series y códigos se leen mejor en monoespaciada, como el resto de códigos.
 const mono = (v) => el("span", { class: "mono", text: v || "—" });
@@ -95,6 +97,7 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
         // "En Stock" / "Sin Stock": basta con saber si hay existencia, no la
         // cantidad exacta (un componente casi siempre es 1 unidad).
         badgeExistencia(conExistencia ? 1 : 0),
+        row.tipo_producto_nombre ? el("span", { class: "tag tag--codigo", text: row.tipo_producto_nombre }) : null,
         ...compatibles.slice(0, 4).map((m) => el("span", { class: "tag tag--codigo", text: m })),
         compatibles.length > 4 ? el("span", { class: "tag tag--none", text: `+${compatibles.length - 4}` }) : null,
       ]),
@@ -129,6 +132,13 @@ export default createCrudView({
         table: "vw_productos_trazables",
         searchFields: ["nombre", "no_parte", "marca", "no_serie", "codigo_interno", "codigo_barras", "codigo_control"],
         card: (row, ctx) => tarjetaComponente(row, ctx),
+        dashboard: (container) => renderDashboardComponentes(container),
+        // Tarjetas ocupa mucho más espacio por fila que Tabla: menos por página.
+        cardPageSize: 15,
+        // Mismo filtro (modelo/estado/tipo) que el Dashboard — ver
+        // productosComponentesFiltros.js — reutilizado también aquí.
+        filtrosExtra: async (onChange) => buildFiltrosComponentes(await cargarOpcionesFiltroComponentes(), onChange),
+        applyFilters: (query) => aplicarFiltrosComponentesQuery(query),
         columns: [
           { key: "nombre", label: "Nombre" },
           { key: "no_parte", label: "No. Parte" },
@@ -136,6 +146,7 @@ export default createCrudView({
           { key: "codigo_control", label: "Cód. control", render: (r) => mono(r.codigo_control) },
           { key: "modelo", label: "Modelo" },
           { key: "marca", label: "Marca" },
+          { key: "tipo_producto_nombre", label: "Tipo de producto" },
           { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
           {
             key: "ubicacion", label: "Ubicación actual",
