@@ -46,6 +46,13 @@ export const productoFormConfig = {
       hint: "El estado y la ubicación del componente se editan desde su tarjeta (van en la existencia, no aquí).",
     },
     {
+      name: "tipo_producto_id", label: "Tipo de producto", type: "select-search",
+      showIf: (v) => v.es_trazable === true,
+      source: { table: "tipos_producto", value: "id", label: "nombre" },
+      placeholder: "Buscar tipo de producto…",
+      hint: "Opcional; se administra en Catálogos → Tipos de producto.",
+    },
+    {
       name: "codigo_barras",
       label: "Código de barras",
       type: "text",

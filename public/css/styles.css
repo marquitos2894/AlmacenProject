@@ -1028,6 +1028,16 @@ select.input:not([multiple]) {
 }
 .dash-card__toggle:hover { background: var(--surface-2); color: var(--text); }
 .dash-card__body { min-width: 0; overflow-x: auto; }
+/* Lista compacta dentro de una tarjeta del dashboard (p. ej. "Componentes
+   del filtro"): alto acotado en vez de estirar la tarjeta indefinidamente. */
+.dash-card__body--scroll { max-height: 320px; overflow-y: auto; }
+
+.dash-list { display: flex; flex-direction: column; }
+.dash-list__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 2px; border-bottom: 1px solid var(--hairline);
+}
+.dash-list__row:last-child { border-bottom: none; }
 
 .dash-chart { width: 100%; }
 /* Nunca por debajo de un ancho legible: si la tarjeta es más angosta, el

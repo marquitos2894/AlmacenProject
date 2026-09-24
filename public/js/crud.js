@@ -40,7 +40,10 @@ import { botonEscanear } from "./scanner.js";
 export function createCrudView(config) {
   let segmentoActivo = config.segments?.options?.[0]?.value;
   let termino = "";
-  let vistaTarjetas = true;
+  // "tarjetas" | "tabla" | "dashboard". Antes era un booleano tarjetas/tabla;
+  // una opción de segmento puede además traer `dashboard(container, rerender)`
+  // (mismo patrón que la pestaña Dashboard de Equipos) para sumar un tercer modo.
+  let modo = "tarjetas";
   let pagina = 0; // sobrevive a los re-render (p. ej. tras guardar se sigue en la misma página)
 
   return {
@@ -49,22 +52,42 @@ export function createCrudView(config) {
       const rerender = () => this.render(root);
       const opcion = config.segments?.options?.find((o) => o.value === segmentoActivo);
 
-      // Conmutador tarjetas/tabla cuando la pestaña activa define ambas.
       const puedeTarjetas = !!(opcion?.card && opcion?.columns);
-      const toggle = puedeTarjetas
-        ? el("button", {
-            class: "btn btn--ghost", type: "button",
-            html: `${icon(vistaTarjetas ? "table" : "grid", { size: 15, stroke: 1.9 })}<span>${vistaTarjetas ? "Ver tabla" : "Ver tarjetas"}</span>`,
-            onclick: () => { vistaTarjetas = !vistaTarjetas; rerender(); },
-          })
-        : null;
-      const mostrarTarjetas = puedeTarjetas && vistaTarjetas;
+      const puedeDashboard = typeof opcion?.dashboard === "function";
+      const modos = [
+        ...(puedeTarjetas ? [{ id: "tarjetas", label: "Tarjetas", icon: "grid" }] : []),
+        { id: "tabla", label: "Tabla", icon: "table" },
+        ...(puedeDashboard ? [{ id: "dashboard", label: "Dashboard", icon: "dashboard" }] : []),
+      ];
+      // Cambiar de pestaña puede dejar el modo actual sin sentido (p. ej. una
+      // pestaña sin dashboard mientras se estaba viendo el de otra).
+      if (!modos.some((m) => m.id === modo)) modo = modos[0].id;
+      const mostrarTarjetas = modo === "tarjetas" && puedeTarjetas;
+
+      const toggle = modos.length > 1 ? buildModoTabs(modos, modo, (m) => { modo = m; rerender(); }) : null;
 
       // Al crear desde una pestaña, el registro nace con ese tipo: pulsar
       // "Nuevo" en Trazables no debería dar de alta un consumible.
       root.appendChild(
         buildHeader(config, () => openForm(config, null, rerender, segmentoActivo), toggle)
       );
+
+      if (config.segments) {
+        root.appendChild(
+          buildSegments(config.segments, segmentoActivo, (valor) => {
+            segmentoActivo = valor;
+            pagina = 0; // otra pestaña, otra lista
+            this.render(root);
+          })
+        );
+      }
+
+      if (modo === "dashboard") {
+        const dashContainer = el("div", {}, [el("p", { class: "loading", text: "Cargando…" })]);
+        root.appendChild(dashContainer);
+        await opcion.dashboard(dashContainer, rerender);
+        return;
+      }
 
       const listContainer = el("div", mostrarTarjetas ? {} : { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
 
@@ -75,12 +98,16 @@ export function createCrudView(config) {
         refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
       };
 
-      if (config.segments) {
+      // Una opción de segmento puede sumar sus propios filtros (más allá de la
+      // búsqueda genérica de `config.search`) — p. ej. Componentes reutiliza
+      // el mismo combo de modelo/estado/tipo en Tarjetas, Tabla y Dashboard.
+      // `applyFilters(query)` (abajo, en refreshList) es quien de verdad los
+      // aplica a la consulta; este solo pinta el control.
+      if (opcion?.filtrosExtra) {
         root.appendChild(
-          buildSegments(config.segments, segmentoActivo, (valor) => {
-            segmentoActivo = valor;
-            pagina = 0; // otra pestaña, otra lista
-            this.render(root);
+          await opcion.filtrosExtra(() => {
+            pagina = 0;
+            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
           })
         );
       }
@@ -166,6 +193,20 @@ export function buildSegments(segments, activo, onChange) {
   return grupo;
 }
 
+// Pestañas de vista (Tarjetas/Tabla/Dashboard) — mismas clases que ya usa el
+// dashboard de Equipos (public/js/views/equipos.js), generalizadas aquí para
+// que cualquier vista con `createCrudView` pueda sumar un modo "dashboard".
+function buildModoTabs(modos, activo, onChange) {
+  return el("div", { class: "view-tabs" }, modos.map((m) =>
+    el("button", {
+      class: `view-tabs__btn${activo === m.id ? " view-tabs__btn--active" : ""}`,
+      type: "button",
+      html: `${icon(m.icon, { size: 14, stroke: 1.9 })}<span>${m.label}</span>`,
+      onclick: () => onChange(m.id),
+    })
+  ));
+}
+
 function buildHeader(config, onNew, extra) {
   return el("div", { class: "page-header" }, [
     el("div", {}, [
@@ -179,10 +220,13 @@ function buildHeader(config, onNew, extra) {
   ]);
 }
 
-const PAGE = 50;
+const PAGE_DEFAULT = 50;
 
 async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false, pagina = 0, irAPagina = null) {
   clear(container);
+  // Una tarjeta ocupa mucho más que una fila de tabla: una pestaña puede
+  // pedir menos por página en ese modo (p. ej. Componentes en Tarjetas).
+  const PAGE = (mostrarTarjetas && opcion?.cardPageSize) || PAGE_DEFAULT;
   // La pestaña puede leer de una vista distinta (con datos unidos); las
   // escrituras siguen yendo a config.table.
   const orden = config.orderBy || "id";
@@ -198,6 +242,9 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
   if (config.segments && segmentoActivo !== undefined) {
     query = query.eq(config.segments.key, segmentoActivo);
   }
+
+  // Filtros propios de la pestaña (más allá de la búsqueda genérica de abajo).
+  if (opcion?.applyFilters) query = opcion.applyFilters(query);
 
   // Búsqueda: ilike sobre las columnas declaradas. Se sanea el término porque
   // las comas y paréntesis son separadores en la sintaxis de .or().
