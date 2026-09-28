@@ -4,6 +4,7 @@ import { el, clear, toast } from "./ui.js";
 import { icon } from "./icons.js";
 
 import dashboard from "./views/dashboard.js";
+import bitacora from "./views/bitacora.js";
 import unidadesMedida from "./views/unidadesMedida.js";
 import estados from "./views/estados.js";
 import equipos from "./views/equipos.js";
@@ -50,6 +51,12 @@ const NAV = [
     group: "Operaciones",
     items: [
       { id: "unidades-operativas", label: "Establecimientos", icon: "⛏️", view: unidadesOperativas },
+    ],
+  },
+  {
+    group: "Administración",
+    items: [
+      { id: "bitacora", label: "Bitácora", view: bitacora },
     ],
   },
 ];
