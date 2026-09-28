@@ -59,12 +59,13 @@ export function createCrudView(config) {
         { id: "tabla", label: "Tabla", icon: "table" },
         ...(puedeDashboard ? [{ id: "dashboard", label: "Dashboard", icon: "dashboard" }] : []),
       ];
-      // Cambiar de pestaña puede dejar el modo actual sin sentido (p. ej. una
-      // pestaña sin dashboard mientras se estaba viendo el de otra).
-      if (!modos.some((m) => m.id === modo)) modo = modos[0].id;
-      const mostrarTarjetas = modo === "tarjetas" && puedeTarjetas;
+      // `modo` es la preferencia del usuario. Si esta pestaña no la ofrece (p. ej.
+      // Consumibles no tiene tarjetas) se usa la primera disponible SIN pisar la
+      // preferencia: así, al volver a Componentes, sigue abriendo en Tarjetas.
+      const modoActivo = modos.some((m) => m.id === modo) ? modo : modos[0].id;
+      const mostrarTarjetas = modoActivo === "tarjetas";
 
-      const toggle = modos.length > 1 ? buildModoTabs(modos, modo, (m) => { modo = m; rerender(); }) : null;
+      const toggle = modos.length > 1 ? buildModoTabs(modos, modoActivo, (m) => { modo = m; rerender(); }) : null;
 
       // Al crear desde una pestaña, el registro nace con ese tipo: pulsar
       // "Nuevo" en Trazables no debería dar de alta un consumible.
@@ -82,7 +83,7 @@ export function createCrudView(config) {
         );
       }
 
-      if (modo === "dashboard") {
+      if (modoActivo === "dashboard") {
         const dashContainer = el("div", {}, [el("p", { class: "loading", text: "Cargando…" })]);
         root.appendChild(dashContainer);
         await opcion.dashboard(dashContainer, rerender);
