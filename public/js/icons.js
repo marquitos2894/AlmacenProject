@@ -5,6 +5,7 @@
 const PATHS = {
   // -- Navegación
   dashboard: '<rect x="3" y="3" width="8" height="9" rx="1.6"/><rect x="13" y="3" width="8" height="5" rx="1.6"/><rect x="13" y="12" width="8" height="9" rx="1.6"/><rect x="3" y="16" width="8" height="5" rx="1.6"/>',
+  bitacora: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7M9 8h3"/>',
   productos: '<path d="M12 3 3 7.5V16.5L12 21l9-4.5v-9L12 3Z"/><path d="M3 7.5 12 12l9-4.5"/><path d="M12 12v9"/>',
   stock: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 12 10 5 10-5"/><path d="m2 16 10 5 10-5"/>',
   movimientos: '<path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/>',
