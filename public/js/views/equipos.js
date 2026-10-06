@@ -10,7 +10,7 @@ import { openForm, softDelete } from "../crud.js";
 import { abrirHistorialEquipo, tagUnidad } from "../historialEquipo.js";
 import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "../asignacionForm.js";
 import { badgeEstado } from "../badges.js";
-import { el, clear, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
+import { el, clear, toast, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
 import { icon } from "../icons.js";
 import { barrasH, barraApilada, tarjetaGrafico, tablaSimple } from "../charts.js";
 
@@ -55,33 +55,47 @@ const norm = (s) => String(s || "").trim();
 const hoy = () => new Date().toISOString().slice(0, 10);
 
 // ------------------------------------------------------------- Descarga
-// Exporta a CSV lo que muestra la lista (con los filtros aplicados, no solo la
-// página visible). BOM UTF-8 para que Excel respete tildes y ñ.
-const csvCelda = (v) => {
-  const t = v == null ? "" : String(v);
-  return /[",\n\r;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-};
+// Exporta a .xlsx lo que muestra la lista (con los filtros aplicados, no solo
+// la página visible). ExcelJS pesa ~1 MB, así que se carga bajo demanda.
+let cargaExcelJS;
+function cargarExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  cargaExcelJS ||= new Promise((ok, fallo) => {
+    const s = el("script", { src: "./vendor/exceljs.js" });
+    s.onload = () => ok(window.ExcelJS);
+    s.onerror = () => { cargaExcelJS = null; fallo(new Error("No se pudo cargar el generador de Excel")); };
+    document.head.appendChild(s);
+  });
+  return cargaExcelJS;
+}
 
-function descargarCSV(filas, d) {
+async function descargarXLSX(filas, d) {
+  const ExcelJS = await cargarExcelJS();
   const cols = [
-    ["Código", (e) => e.codigo],
-    ["Nombre", (e) => e.nombre],
-    ["Modelo", (e) => e.modelo],
-    ["Marca", (e) => e.marca],
-    ["Tipo", (e) => d.tipoNombrePorId.get(e.tipo_equipo_id)],
-    ["Año de fabricación", (e) => e.anio_fabricacion],
-    ["No. de serie", (e) => e.no_serie],
-    ["Establecimiento", (e) => d.vigentePorEquipo.get(e.id)?.unidad_nombre],
-    ["Código asignado", (e) => d.vigentePorEquipo.get(e.id)?.codigo_asignado],
-    ["Estado", (e) => e.estado_actual],
-    ["Descripción", (e) => e.descripcion],
+    ["Código", (e) => e.codigo, 14],
+    ["Nombre", (e) => e.nombre, 24],
+    ["Modelo", (e) => e.modelo, 18],
+    ["Marca", (e) => e.marca, 16],
+    ["Tipo", (e) => d.tipoNombrePorId.get(e.tipo_equipo_id), 18],
+    ["Año de fabricación", (e) => e.anio_fabricacion, 12],
+    ["No. de serie", (e) => e.no_serie, 18],
+    ["Establecimiento", (e) => d.vigentePorEquipo.get(e.id)?.unidad_nombre, 24],
+    ["Código asignado", (e) => d.vigentePorEquipo.get(e.id)?.codigo_asignado, 16],
+    ["Estado", (e) => e.estado_actual, 14],
+    ["Descripción", (e) => e.descripcion, 40],
   ];
-  const lineas = [cols.map(([h]) => csvCelda(h)).join(",")];
-  for (const e of filas) lineas.push(cols.map(([, f]) => csvCelda(f(e))).join(","));
 
-  const blob = new Blob(["\ufeff" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Equipos", { views: [{ state: "frozen", ySplit: 1 }] });
+  ws.columns = cols.map(([header, , width]) => ({ header, width }));
+  for (const e of filas) ws.addRow(cols.map(([, f]) => f(e) ?? ""));
+  ws.getRow(1).font = { bold: true };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const a = el("a", { href: url, download: `equipos-${hoy()}.csv` });
+  const a = el("a", { href: url, download: `equipos-${hoy()}.xlsx` });
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -161,7 +175,12 @@ export default {
 
     const lista = el("div", {});
     btnDescargar.disabled = false;
-    btnDescargar.onclick = () => descargarCSV(filtrar(data), data);
+    btnDescargar.onclick = async () => {
+      btnDescargar.disabled = true;
+      try { await descargarXLSX(filtrar(data), data); }
+      catch (err) { toast(`No se pudo generar el Excel: ${err.message}`, "error"); }
+      finally { btnDescargar.disabled = false; }
+    };
     cont.appendChild(buildFiltros(data, () => { paginaEq = 0; pintar(); }));
     cont.appendChild(lista);
     pintar();
