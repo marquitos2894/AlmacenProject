@@ -10,7 +10,7 @@ import { openForm, softDelete } from "../crud.js";
 import { abrirHistorialEquipo, tagUnidad } from "../historialEquipo.js";
 import { cfgAbrirAsignacion, cfgCerrarAsignacion, cfgEditarAsignacion } from "../asignacionForm.js";
 import { badgeEstado } from "../badges.js";
-import { el, clear, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
+import { el, clear, toast, buildTable, iconButton, buildPaginador, buildSearchSelect } from "../ui.js";
 import { icon } from "../icons.js";
 import { barrasH, barraApilada, tarjetaGrafico, tablaSimple } from "../charts.js";
 
@@ -54,6 +54,54 @@ const PAGE = 50; // equipos por página (se pagina en cliente: el set es pequeñ
 const norm = (s) => String(s || "").trim();
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+// ------------------------------------------------------------- Descarga
+// Exporta a .xlsx lo que muestra la lista (con los filtros aplicados, no solo
+// la página visible). ExcelJS pesa ~1 MB, así que se carga bajo demanda.
+let cargaExcelJS;
+function cargarExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  cargaExcelJS ||= new Promise((ok, fallo) => {
+    const s = el("script", { src: "./vendor/exceljs.js" });
+    s.onload = () => ok(window.ExcelJS);
+    s.onerror = () => { cargaExcelJS = null; fallo(new Error("No se pudo cargar el generador de Excel")); };
+    document.head.appendChild(s);
+  });
+  return cargaExcelJS;
+}
+
+async function descargarXLSX(filas, d) {
+  const ExcelJS = await cargarExcelJS();
+  const cols = [
+    ["Código", (e) => e.codigo, 14],
+    ["Nombre", (e) => e.nombre, 24],
+    ["Modelo", (e) => e.modelo, 18],
+    ["Marca", (e) => e.marca, 16],
+    ["Tipo", (e) => d.tipoNombrePorId.get(e.tipo_equipo_id), 18],
+    ["Año de fabricación", (e) => e.anio_fabricacion, 12],
+    ["No. de serie", (e) => e.no_serie, 18],
+    ["Establecimiento", (e) => d.vigentePorEquipo.get(e.id)?.unidad_nombre, 24],
+    ["Código asignado", (e) => d.vigentePorEquipo.get(e.id)?.codigo_asignado, 16],
+    ["Estado", (e) => e.estado_actual, 14],
+    ["Descripción", (e) => e.descripcion, 40],
+  ];
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Equipos", { views: [{ state: "frozen", ySplit: 1 }] });
+  ws.columns = cols.map(([header, , width]) => ({ header, width }));
+  for (const e of filas) ws.addRow(cols.map(([, f]) => f(e) ?? ""));
+  ws.getRow(1).font = { bold: true };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: `equipos-${hoy()}.xlsx` });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // Acciones de asignación de un equipo, según tenga o no una asignación vigente.
 // No se puede abrir una nueva mientras haya vigente: hay que cerrarla antes.
 function accionesAsignacion(e, vig, rerender) {
@@ -85,6 +133,11 @@ export default {
     const rerender = () => this.render(root);
     clear(root);
 
+    const btnDescargar = el("button", {
+      class: "btn btn--ghost", type: "button", disabled: true,
+      html: `${icon("download", { size: 14, stroke: 1.9 })}<span>Descargar</span>`,
+    });
+
     root.appendChild(
       el("div", { class: "page-header" }, [
         el("div", {}, [
@@ -93,6 +146,7 @@ export default {
         ]),
         el("div", { class: "page-header__actions" }, [
           buildTabsVista(rerender),
+          modo === "dashboard" ? null : btnDescargar,
           puedeEditar()
             ? el("button", { class: "btn btn--primary", text: "+ Nuevo equipo", onclick: () => openForm(CRUD, null, rerender) })
             : null,
@@ -120,6 +174,13 @@ export default {
     }
 
     const lista = el("div", {});
+    btnDescargar.disabled = false;
+    btnDescargar.onclick = async () => {
+      btnDescargar.disabled = true;
+      try { await descargarXLSX(filtrar(data), data); }
+      catch (err) { toast(`No se pudo generar el Excel: ${err.message}`, "error"); }
+      finally { btnDescargar.disabled = false; }
+    };
     cont.appendChild(buildFiltros(data, () => { paginaEq = 0; pintar(); }));
     cont.appendChild(lista);
     pintar();
