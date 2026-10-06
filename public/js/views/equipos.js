@@ -54,6 +54,40 @@ const PAGE = 50; // equipos por página (se pagina en cliente: el set es pequeñ
 const norm = (s) => String(s || "").trim();
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+// ------------------------------------------------------------- Descarga
+// Exporta a CSV lo que muestra la lista (con los filtros aplicados, no solo la
+// página visible). BOM UTF-8 para que Excel respete tildes y ñ.
+const csvCelda = (v) => {
+  const t = v == null ? "" : String(v);
+  return /[",\n\r;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+function descargarCSV(filas, d) {
+  const cols = [
+    ["Código", (e) => e.codigo],
+    ["Nombre", (e) => e.nombre],
+    ["Modelo", (e) => e.modelo],
+    ["Marca", (e) => e.marca],
+    ["Tipo", (e) => d.tipoNombrePorId.get(e.tipo_equipo_id)],
+    ["Año de fabricación", (e) => e.anio_fabricacion],
+    ["No. de serie", (e) => e.no_serie],
+    ["Establecimiento", (e) => d.vigentePorEquipo.get(e.id)?.unidad_nombre],
+    ["Código asignado", (e) => d.vigentePorEquipo.get(e.id)?.codigo_asignado],
+    ["Estado", (e) => e.estado_actual],
+    ["Descripción", (e) => e.descripcion],
+  ];
+  const lineas = [cols.map(([h]) => csvCelda(h)).join(",")];
+  for (const e of filas) lineas.push(cols.map(([, f]) => csvCelda(f(e))).join(","));
+
+  const blob = new Blob(["\ufeff" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: `equipos-${hoy()}.csv` });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // Acciones de asignación de un equipo, según tenga o no una asignación vigente.
 // No se puede abrir una nueva mientras haya vigente: hay que cerrarla antes.
 function accionesAsignacion(e, vig, rerender) {
@@ -85,6 +119,11 @@ export default {
     const rerender = () => this.render(root);
     clear(root);
 
+    const btnDescargar = el("button", {
+      class: "btn btn--ghost", type: "button", disabled: true,
+      html: `${icon("download", { size: 14, stroke: 1.9 })}<span>Descargar</span>`,
+    });
+
     root.appendChild(
       el("div", { class: "page-header" }, [
         el("div", {}, [
@@ -93,6 +132,7 @@ export default {
         ]),
         el("div", { class: "page-header__actions" }, [
           buildTabsVista(rerender),
+          modo === "dashboard" ? null : btnDescargar,
           puedeEditar()
             ? el("button", { class: "btn btn--primary", text: "+ Nuevo equipo", onclick: () => openForm(CRUD, null, rerender) })
             : null,
@@ -120,6 +160,8 @@ export default {
     }
 
     const lista = el("div", {});
+    btnDescargar.disabled = false;
+    btnDescargar.onclick = () => descargarCSV(filtrar(data), data);
     cont.appendChild(buildFiltros(data, () => { paginaEq = 0; pintar(); }));
     cont.appendChild(lista);
     pintar();
