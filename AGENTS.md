@@ -37,7 +37,7 @@ public/js/…                           pickerModal, productSearch, productoForm
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
 public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
-supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0058)
+supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0059)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)
 ```
 
@@ -63,7 +63,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 ## Base de datos (Supabase)
 
 ### Migraciones
-- Un archivo por cambio, numeración correlativa (`0059_…` es la siguiente). Hay huecos históricos
+- Un archivo por cambio, numeración correlativa (`0060_…` es la siguiente). Hay huecos históricos
   (0011, 0012, 0015, 0018): no los rellenes.
 - Escríbelas **idempotentes** (`if not exists`, `create or replace`, `drop … if exists`) y con
   cabecera `--` que explique el problema y la decisión.
@@ -95,6 +95,11 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
   (historial de asignaciones a **establecimientos**, una abierta por equipo, `codigo_asignado`, horómetros 0027).
   `equipos.estado_actual/unidad_actual` se derivan de la asignación (0020). Compatibilidad producto↔equipo por
   **modelo** (`set_producto_equipos`).
+- **Pertenencia y etiquetas** (0059): `productos.unidad_operativa_id` = establecimiento al que pertenece un
+  componente por defecto; dato fijo que solo edita el usuario (las salidas no lo tocan; el destino de la
+  última salida es otro dato, derivado en `vw_productos_trazables`). `productos.etiquetas text[]` = #hashtags
+  libres para agrupar productos y componentes; el trigger `fn_productos_normaliza_etiquetas` las normaliza
+  (minúsculas, sin `#`, sin repetidas, máx. 10). No copies el establecimiento a las etiquetas.
 - **Catálogos**: unidades de medida, estados, tipos de equipo, tipos de producto, almacenes, proveedores.
 - **Roles**: `usuarios.rol` = `editor` (default) | `lector` (solo SELECT). RLS por operación con `puede_editar()`;
   los RPC son `SECURITY INVOKER` y quedan bloqueados para `lector`.

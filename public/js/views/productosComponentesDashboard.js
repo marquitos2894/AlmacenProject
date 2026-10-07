@@ -21,6 +21,7 @@ import { barrasH, barraApilada, tarjetaGrafico, tablaSimple } from "../charts.js
 import { badgeEstado } from "../badges.js";
 import {
   hayFiltroComponentesActivo, buildFiltrosComponentes, filasSegunFiltrosComponentes,
+  cargarUnidades, cargarEtiquetas,
 } from "./productosComponentesFiltros.js";
 
 const S1 = "#5257dd"; // índigo — mismo color que el resto de los dashboards de la app
@@ -45,6 +46,8 @@ export async function renderDashboardComponentes(container) {
     modelos: [...new Set(data.componentes.map((c) => norm(c.modelo)).filter(Boolean))].sort(),
     estados: [...new Set(data.componentes.map((c) => norm(c.estado_nombre)).filter(Boolean))].sort(),
     tipos: data.tipos,
+    unidades: data.unidades,
+    etiquetas: data.etiquetas,
   };
   container.appendChild(buildFiltrosComponentes(opciones, pintar));
   container.appendChild(cuerpo);
@@ -52,13 +55,15 @@ export async function renderDashboardComponentes(container) {
 }
 
 async function cargarDatos() {
-  const [componentes, tipos] = await Promise.all([
+  const [componentes, tipos, unidades, etiquetas] = await Promise.all([
     supabase
       .from("vw_productos_trazables")
-      .select("id, nombre, no_serie, codigo_interno, modelo, estado_nombre, tipo_producto_id, tipo_producto_nombre, producto_almacen_id")
+      .select("id, nombre, no_serie, codigo_interno, modelo, estado_nombre, tipo_producto_id, tipo_producto_nombre, producto_almacen_id, unidad_operativa_id, etiquetas")
       .eq("es_trazable", true)
       .eq("activo", true),
     supabase.from("tipos_producto").select("id, nombre").eq("activo", true).order("nombre"),
+    cargarUnidades(),
+    cargarEtiquetas(),
   ]);
 
   const err = componentes.error || tipos.error;
@@ -67,6 +72,8 @@ async function cargarDatos() {
   return {
     componentes: componentes.data || [],
     tipos: tipos.data || [],
+    unidades,
+    etiquetas,
   };
 }
 

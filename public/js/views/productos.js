@@ -6,10 +6,19 @@ import { badgeEstado, badgeAlmacen, badgeChip, badgeExistencia } from "../badges
 import { abrirCambioEstado } from "../cambioEstadoExistencia.js";
 import { iconButton, el } from "../ui.js";
 import { renderDashboardComponentes } from "./productosComponentesDashboard.js";
-import { buildFiltrosComponentes, cargarOpcionesFiltroComponentes, aplicarFiltrosComponentesQuery } from "./productosComponentesFiltros.js";
+import {
+  buildFiltrosComponentes, cargarOpcionesFiltroComponentes, aplicarFiltrosComponentesQuery,
+  buildFiltroEtiqueta, aplicarFiltroEtiquetaQuery, cargarEtiquetas,
+} from "./productosComponentesFiltros.js";
 
 // Series y códigos se leen mejor en monoespaciada, como el resto de códigos.
 const mono = (v) => el("span", { class: "mono", text: v || "—" });
+
+// Etiquetas #hashtag de un producto (la BD las guarda normalizadas, sin '#').
+const chipsEtiquetas = (etiquetas) =>
+  (etiquetas || []).map((t) => el("span", { class: "tag tag--codigo", text: `#${t}` }));
+const celdaEtiquetas = (r) =>
+  r.etiquetas?.length ? el("span", { class: "loc-chips" }, chipsEtiquetas(r.etiquetas)) : mono();
 
 // Ubicación actual de un componente:
 //  - con existencia: ubicación + almacén;
@@ -93,11 +102,14 @@ function tarjetaComponente(row, { editable, editar, desactivar, rerender }) {
       row.codigo_control ? el("div", { class: "card-tile__serie mono", text: row.codigo_control }) : null,
       el("div", { class: "card-tile__label", text: "Ubicación actual" }),
       el("div", { class: "card-tile__loc" }, nodosUbicacionComponente(row)),
+      row.unidad_operativa_nombre ? el("div", { class: "card-tile__label", text: "Pertenece a" }) : null,
+      row.unidad_operativa_nombre ? el("div", { class: "card-tile__loc" }, [badgeChip(row.unidad_operativa_nombre)]) : null,
       el("div", { class: "card-tile__badges" }, [
         // "En Stock" / "Sin Stock": basta con saber si hay existencia, no la
         // cantidad exacta (un componente casi siempre es 1 unidad).
         badgeExistencia(conExistencia ? 1 : 0),
         row.tipo_producto_nombre ? el("span", { class: "tag tag--codigo", text: row.tipo_producto_nombre }) : null,
+        ...chipsEtiquetas(row.etiquetas),
         ...compatibles.slice(0, 4).map((m) => el("span", { class: "tag tag--codigo", text: m })),
         compatibles.length > 4 ? el("span", { class: "tag tag--none", text: `+${compatibles.length - 4}` }) : null,
       ]),
@@ -124,7 +136,12 @@ export default createCrudView({
     key: "es_trazable",
     label: "Tipo de producto",
     options: [
-      { value: false, label: "Consumibles", hint: "se cuentan por cantidad" },
+      {
+        value: false, label: "Consumibles", hint: "se cuentan por cantidad",
+        // Misma etiqueta que el filtro de Componentes (estado compartido).
+        filtrosExtra: async (onChange) => buildFiltroEtiqueta(await cargarEtiquetas(), onChange),
+        applyFilters: (query) => aplicarFiltroEtiquetaQuery(query),
+      },
       {
         value: true,
         label: "Componentes",
@@ -147,6 +164,8 @@ export default createCrudView({
           { key: "modelo", label: "Modelo" },
           { key: "marca", label: "Marca" },
           { key: "tipo_producto_nombre", label: "Tipo de producto" },
+          { key: "unidad_operativa_nombre", label: "Pertenece a", render: (r) => badgeChip(r.unidad_operativa_nombre) },
+          { key: "etiquetas", label: "Etiquetas", render: celdaEtiquetas },
           { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
           {
             key: "ubicacion", label: "Ubicación actual",
@@ -162,6 +181,7 @@ export default createCrudView({
     { key: "no_parte", label: "No. Parte" },
     { key: "marca", label: "Marca" },
     { key: "unidad_medida_id", label: "Unidad" },
+    { key: "etiquetas", label: "Etiquetas", render: celdaEtiquetas },
     { key: "equipos_compatible", label: "Equipos compatibles" },
   ],
   // Acciones extra junto a Editar / Desactivar. El historial solo aplica a
