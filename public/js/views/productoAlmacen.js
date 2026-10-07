@@ -231,9 +231,8 @@ function verDetalle(grupo, onCambio) {
       ])
     );
 
+    // Nombre y no. de parte ya van en el encabezado de arriba (mismo producto).
     const columnas = [
-      { key: "producto_nombre", label: "Nombre" },
-      { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "—" }) },
       { key: "no_serie", label: "Serie", render: (r) => el("span", { class: "mono", text: r.no_serie || "—" }) },
       { key: "codigo_control", label: "Cód. control", render: (r) => el("span", { class: "mono", text: r.codigo_control || "—" }) },
       { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },

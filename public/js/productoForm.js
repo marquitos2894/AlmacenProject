@@ -53,6 +53,23 @@ export const productoFormConfig = {
       hint: "Opcional; se administra en Catálogos → Tipos de producto.",
     },
     {
+      name: "unidad_operativa_id", label: "Pertenece a", type: "select-search",
+      showIf: (v) => v.es_trazable === true,
+      source: { table: "unidad_operativa", value: "id", label: "nombre" },
+      placeholder: "Buscar establecimiento…",
+      hint: "Opcional; establecimiento al que pertenece por defecto. Las salidas no lo cambian. Se administra en Operaciones → Establecimientos.",
+    },
+    {
+      // Se guarda como text[] en productos; el trigger de la BD las normaliza
+      // (minúsculas, sin '#', sin repetidas, máx. 10), así que aquí solo se
+      // convierte entre la lista y el texto "#a #b" que se teclea.
+      name: "etiquetas", label: "Etiquetas", type: "text", full: true,
+      placeholder: "#bomba #mantenimiento",
+      hint: "Opcional; sirven para agrupar y filtrar productos. Sepáralas con espacio o coma.",
+      parse: (lista) => (Array.isArray(lista) ? lista.map((t) => `#${t}`).join(" ") : ""),
+      serialize: (texto) => (texto ? texto.split(/[\s,]+/).filter(Boolean) : []),
+    },
+    {
       name: "codigo_barras",
       label: "Código de barras",
       type: "text",
