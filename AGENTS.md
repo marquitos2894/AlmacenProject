@@ -37,7 +37,7 @@ public/js/…                           pickerModal, productSearch, productoForm
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
 public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
-supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0059)
+supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0060)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)
 ```
 
@@ -63,7 +63,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 ## Base de datos (Supabase)
 
 ### Migraciones
-- Un archivo por cambio, numeración correlativa (`0060_…` es la siguiente). Hay huecos históricos
+- Un archivo por cambio, numeración correlativa (`0061_…` es la siguiente). Hay huecos históricos
   (0011, 0012, 0015, 0018): no los rellenes.
 - Escríbelas **idempotentes** (`if not exists`, `create or replace`, `drop … if exists`) y con
   cabecera `--` que explique el problema y la decisión.
@@ -119,8 +119,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 - Desarrolla en la rama indicada por la sesión; commits descriptivos en español (`feat:`, `fix:`, …).
 - No crees PR salvo que se pida explícitamente.
 
-## Documentación pendiente
+## Documentación
 
-El `README.md` está desactualizado: su guía de puesta en marcha lista migraciones solo hasta la 0005 y no
-describe Transferencias, trazables, establecimientos, roles ni la bitácora. Esta guía y las migraciones
-(cabeceras `--`) son la fuente más fiel; actualiza el README cuando toques esas áreas.
+`README.md` describe puesta en marcha, funcionalidad y reglas de negocio. Mantenlo al día cuando cambies
+migraciones, pantallas o reglas; la guía de migraciones agrupa por rangos, no archivo por archivo.

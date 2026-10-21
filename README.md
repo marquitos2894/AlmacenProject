@@ -12,28 +12,48 @@ No hay servidor propio: el navegador habla con Supabase usando `supabase-js`.
 ## Estructura
 
 ```
-supabase/migrations/0001_init.sql   Esquema: tablas, FKs, RLS, vistas y seed
-public/                             Sitio estático
+supabase/migrations/       Esquema versionado (0001…0060, ver "Migraciones")
+public/                    Sitio estático
   index.html
-  css/styles.css                   Admin template (claro/oscuro)
-  vendor/supabase.js               Bundle UMD de supabase-js
+  css/styles.css           Admin template (claro/oscuro), WCAG AA
+  vendor/                  supabase.js, jsbarcode.js, zxing.js (UMD) y exceljs.js (carga bajo demanda)
   js/
-    config.js                      URL + anon key (RELLENAR)
-    supabaseClient.js  auth.js  ui.js  crud.js  app.js
-    views/                         Una por pantalla
+    config.js              URL + anon key (RELLENAR; plantilla en config.example.js)
+    app.js                 Router por hash, sesión y navegación
+    crud.js                Fábrica de pantallas CRUD (soft-delete, segmentos, búsqueda, tarjetas/tabla)
+    ui.js  supabaseClient.js  auth.js  charts.js  icons.js  badges.js
+    productSearch.js       Buscador de productos/existencias del carrito
+    pickerModal.js         Selector genérico (equipo, establecimiento, proveedor…)
+    scanner.js  barcode.js Escáner de cámara (ZXing) y códigos de barras (JsBarcode)
+    views/                 Una por pantalla
+scripts/dev-lan.mjs        Servidor HTTPS para probar el escáner en el móvil
+AGENTS.md  CLAUDE.md       Guía para agentes de IA (reglas de dominio y convenciones)
 ```
+
+Como no hay backend, **la lógica que debe ser atómica vive en funciones de Postgres**
+(`registrar_movimiento`, `registrar_transferencia`, `anular_movimiento`, `set_producto_unidad`,
+`cambiar_estado_existencia`) y se llama con `supabase.rpc(...)`. Las reglas se imponen con constraints,
+índices y triggers, no solo en la interfaz.
 
 ## Puesta en marcha
 
-1. **Crear el esquema.** En el proyecto Supabase → SQL Editor, ejecuta **en orden**:
-   1. `supabase/migrations/0001_init.sql` — tablas, RLS, vistas y datos semilla.
-   2. `supabase/migrations/0002_movimientos_ticket.sql` — código de barras, movimientos
-      maestro-detalle con folio, stock agrupado y la función `registrar_movimiento`.
-   3. `supabase/migrations/0003_activo_fijo_unico.sql` — regla de activo fijo.
-   4. `supabase/migrations/0004_fijar_search_path.sql` — cierra el aviso de seguridad
-      `function_search_path_mutable` del linter de Supabase.
-   5. `supabase/migrations/0005_stock_por_estado_ubicacion.sql` — el stock se identifica
-      por producto + almacén + estado + ubicación.
+1. **Crear el esquema.** En el proyecto Supabase → SQL Editor, ejecuta **en orden** todos los archivos de
+   `supabase/migrations/` (0001 → 0060). Cada uno es idempotente y trae una cabecera `--` que explica el problema
+   y la decisión. Grupos principales:
+   - **0001–0005** — tablas base, RLS, vistas, movimientos con folio y `registrar_movimiento`, regla de activo
+     fijo, `search_path` fijo y stock por producto + almacén + estado + ubicación.
+   - **0006–0016** — unicidad de series y partes, `producto_unidad` (unidades físicas), `es_trazable`
+     (antes `activofijo`), descripciones y referencias en el movimiento.
+   - **0017–0021, 0027–0029, 0037, 0047** — establecimientos (`unidad_operativa`), asignaciones de equipos con
+     código y horómetros, tipos de equipo.
+   - **0022–0026, 0030–0036, 0056** — roles `editor`/`lector` con RLS, transferencias, reglas de salida y
+     agotado, y anulación de movimientos.
+   - **0038–0055** — códigos de barras e internos (`TCH-AÑO-N`), código de control por existencia, vistas de stock.
+   - **0057–0059** — tipos de producto, bitácora (`log_eventos`), pertenencia a establecimiento y etiquetas.
+   - **0060** — proveedores. En una base **nueva**, ejecútala justo después de la 0001: la 0022 (roles) y la 0042
+     ya dependen de `proveedores` y de `movimientos.id_proveedor`.
+
+   Faltan a propósito los números 0011, 0012, 0015 y 0018 (huecos históricos).
 
 2. **Crear un usuario.** Supabase → Authentication → Users → *Add user* (email + contraseña),
    o habilita el registro por email. Ese usuario es el que iniciará sesión.
@@ -47,7 +67,7 @@ public/                             Sitio estático
    ```
    (La clave anon/publishable es pública por diseño; la seguridad la impone RLS.)
 
-4. **Refrescar el vendor** (solo si actualizas supabase-js):
+4. **Refrescar el vendor** (solo si actualizas supabase-js, jsbarcode, zxing o exceljs):
    ```bash
    npm run copy-vendor
    ```
@@ -79,56 +99,77 @@ da una URL HTTPS pública temporal.
 
 ## Funcionalidad
 
-**Mantenimientos (CRUD, sin borrado físico — solo `activo=false`; las listas muestran solo activos):**
-Productos, Unidades de medida, Estados, Equipos, Almacenes.
+Menú (`public/js/app.js`): Panel · Productos · Stock por almacén · Movimientos · Transferencias ·
+Almacenes · Proveedores · Unidades de medida · Estados · Equipos · Tipos de equipo · Tipos de producto ·
+Establecimientos · Bitácora.
 
-- En **Productos**, "Equipos compatibles" es un **selector múltiple** (tabla puente `producto_equipo`,
-  que además conecta la entidad `EQUIPOS`).
-- **Código de barras**: si lo escribes se respeta; si lo dejas vacío la base lo genera como
-  `BAR-{no_parte}` (espacios → `_`, con sufijo `-{id}` si ya existe) o `SYS-{id}` si no hay no. de parte.
-  Se dibuja con JsBarcode.
+**Catálogos (CRUD sin borrado físico — solo `activo=false`; las listas muestran activos):** almacenes,
+proveedores, unidades de medida, estados, tipos de equipo, tipos de producto, establecimientos y equipos.
+Varias listas traen buscador (`search` en `crud.js`) y alternan tarjetas/tabla/dashboard.
+
+**Productos.** Dos clases: **consumibles** (se cuentan por stock) y **componentes trazables** (unidad física
+única, con serie, modelo y código interno). Los componentes tienen "Pertenece a" (establecimiento por
+defecto), tipo de producto y etiquetas `#hashtag`; los productos enlazan equipos compatibles por modelo.
+
+**Códigos de barras** (JsBarcode; escáner con la cámara vía ZXing): consumible → su `no_parte` (o `INT-XXXXX`
+autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑO-N`.
 
 **Movimientos — flujo de 3 pasos:**
 
 1. `#/movimientos` — eliges el **almacén** en tarjetas.
 2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por no. de parte, nombre y estado.
 3. `#/movimientos/{id}/nuevo` — encabezado + **carrito**:
-   - **Agregar producto** abre un modal de búsqueda con autocompletado (debounce de 300 ms) sobre
-     `no_parte`, `nombre` y `no_serie`, con badge de existencia y alta rápida de productos.
-   - **Stock Inicial** (casilla): *reemplaza* la existencia en lugar de sumarla.
-   - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket con su código de barras.
+   - **Agregar producto** abre un modal de búsqueda (debounce de 300 ms) sobre no. de parte, nombre, serie,
+     código interno y código de control, con badge de existencia y alta rápida de productos.
+   - Referencias opcionales del movimiento: componente, equipo, establecimiento y **proveedor**.
+   - **Stock Inicial**: *reemplaza* la existencia en lugar de sumarla.
+   - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket imprimible.
+   - Un ticket se puede **anular**: se revierte su efecto en el stock sin borrar el historial.
 
-El guardado usa la función `registrar_movimiento`, que hace encabezado + detalle + ajuste de stock
-en **una sola transacción**.
+El guardado usa `registrar_movimiento`: encabezado + detalle + ajuste de stock en **una sola transacción**.
 
-**Stock por almacén — solo consulta.** Agrupado por `no_parte` (la suma la hace SQL, en
-`vw_stock_agrupado`), con `🔍 Ver detalles` que abre el desglose de series individuales. El stock ya
-**no se edita aquí**: se modifica únicamente registrando movimientos.
+**Transferencias** entre almacenes (`registrar_transferencia`, folio `TRF-…`): resta en el origen y suma o
+fusiona en el destino, también en una sola transacción.
+
+**Stock por almacén.** Agrupado por `no_parte` (la suma la hace SQL, en `vw_stock_agrupado`), con detalle
+por existencia. Aquí se puede cambiar el estado o la ubicación de una existencia, pero la cantidad
+**solo cambia registrando movimientos o transferencias**.
+
+**Equipos.** Tarjetas, tabla y dashboard; asignación a establecimientos con código y horómetros;
+historial; y botón **Descargar** que exporta a `.xlsx` la lista con los filtros aplicados.
+
+**Bitácora.** Registro de quién hizo qué y cuándo, escrito por triggers en la base (no por el frontend).
+
+**Roles.** `editor` (por defecto) y `lector` (solo consulta): la RLS lo impone y la interfaz oculta las acciones
+de escritura.
 
 ## Reglas de negocio
 
-- **Identidad del stock**: una existencia es la combinación **producto + almacén + estado + ubicación**.
-  Si registras un movimiento con un estado o una ubicación distintos, **no se suma**: se crea una
-  existencia nueva. Lo garantiza el índice `uq_producto_almacen_grano` (con `NULLS NOT DISTINCT`, para
-  que dos filas «sin estado» choquen entre sí en lugar de multiplicarse).
-- **Ubicación normalizada**: `A-7`, `a-7` y `A-7 ` son la misma ubicación. La columna generada
-  `ubicacion_norm` (`upper(btrim(...))`) es la que se indexa; `ubicacion` conserva lo que escribió
-  el usuario. Sin esto el almacén se fragmentaría solo.
-- **Activo fijo**: un producto con `activofijo = true` solo puede existir en **un almacén** y no puede
-  duplicarse (`uq_producto_almacen_activo_fijo`). Como es una unidad física única, cambiarle el estado
-  o la ubicación lo **traslada** (actualiza su fila) en vez de crear otra. Moverlo a **otro almacén**
-  sigue exigiendo darle salida primero.
-- **Salidas**: el renglón identifica la existencia exacta (`producto_almacen_id`), porque un mismo
-  producto puede tener varias existencias en el almacén. No hay descuentos automáticos.
+- **Identidad del stock**: una existencia es **producto + almacén + estado + ubicación** (+ **código de
+  control**: N.º de OT o código del proveedor). Si un movimiento trae un estado, una ubicación o un código
+  distintos, **no se suma**: se crea una existencia nueva. Lo garantiza el índice `uq_producto_almacen_grano`
+  (con `NULLS NOT DISTINCT`).
+- **Ubicación normalizada**: `A-7`, `a-7` y `A-7 ` son la misma. La columna generada `ubicacion_norm`
+  (`upper(btrim(...))`) es la que se indexa; `ubicacion` conserva lo que escribió el usuario.
+- **Componentes trazables** (`es_trazable`): solo pueden existir en **un almacén** y no se duplican. Cambiarles
+  el estado o la ubicación **muda** su fila. Una salida total los saca del inventario (la existencia se
+  desactiva). Estado y ubicación canónicos viven en `producto_almacen`.
+- **Consumibles**: al agotarse pierden su ubicación, y sus existencias vacías se consolidan para no fragmentar
+  el stock.
+- **Salidas**: el renglón identifica la existencia exacta (`producto_almacen_id`); una salida nunca deja el
+  stock por debajo de cero.
 - **Stock Inicial** sobrescribe **solo esa existencia**; las demás del mismo producto no se tocan.
-  Una entrada normal suma y una salida resta (nunca por debajo de cero).
+- **Equipos**: solo una asignación abierta por equipo; su estado y establecimiento actuales se derivan de ella.
+- **Proveedores**: ni el código ni el RUC pueden repetirse entre proveedores activos.
 
 ## Notas de diseño
 
 - `usuarios` se sincroniza solo al iniciar sesión (enlace `auth_uid` con `auth.users`); no tiene pantalla.
-- `movimientos` es un log (sin `activo`).
-- RLS: acceso total para usuarios `authenticated`. Se puede granularizar por rol sin tocar el frontend.
-- La columna `activoFijo` de `productos` se guarda como `activofijo` (Postgres pasa a minúsculas los
-  identificadores sin comillas); el frontend usa ese nombre.
+- `movimientos` es un log (sin `activo`); anular no borra.
+- RLS: lectura abierta a `authenticated`; INSERT/UPDATE/DELETE exigen `puede_editar()`. Los RPC corren con
+  los permisos de quien llama, así que también quedan bloqueados para `lector`.
+- Postgres pasa a minúsculas los identificadores sin comillas (`activoFijo` se guardó como `activofijo`).
+- PostgREST devuelve como máximo 1000 filas por consulta, **sin avisar**: para agregar en cliente se usa
+  `fetchAll()` de `supabaseClient.js`.
 - Paleta con tokens de tinta separados (`--*-ink`) para que todo el texto cumpla contraste
   **WCAG AA (4.5:1)** en tema claro y oscuro.
