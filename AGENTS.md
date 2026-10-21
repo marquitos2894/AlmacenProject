@@ -37,7 +37,7 @@ public/js/…                           pickerModal, productSearch, productoForm
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
 public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
-supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0061)
+supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0062)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)
 ```
 
@@ -63,7 +63,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 ## Base de datos (Supabase)
 
 ### Migraciones
-- Un archivo por cambio, numeración correlativa (`0062_…` es la siguiente). Hay huecos históricos
+- Un archivo por cambio, numeración correlativa (`0063_…` es la siguiente). Hay huecos históricos
   (0011, 0012, 0015, 0018): no los rellenes.
 - Escríbelas **idempotentes** (`if not exists`, `create or replace`, `drop … if exists`) y con
   cabecera `--` que explique el problema y la decisión.

@@ -52,7 +52,8 @@ Como no hay backend, **la lógica que debe ser atómica vive en funciones de Pos
    - **0057–0059** — tipos de producto, bitácora (`log_eventos`), pertenencia a establecimiento y etiquetas.
    - **0060** — proveedores. En una base **nueva**, ejecútala justo después de la 0001: la 0022 (roles) y la 0042
      ya dependen de `proveedores` y de `movimientos.id_proveedor`.
-   - **0061** — el Stock Inicial acumula en vez de reemplazar.
+   - **0061–0062** — el Stock Inicial acumula en vez de reemplazar; `vw_stock_agrupado` agrega códigos de barras,
+     series y códigos internos (Stock por almacén con componentes).
 
    Faltan a propósito los números 0011, 0012, 0015 y 0018 (huecos históricos).
 
@@ -137,9 +138,11 @@ El guardado usa `registrar_movimiento`: encabezado + detalle + ajuste de stock e
 **Transferencias** entre almacenes (`registrar_transferencia`, folio `TRF-…`): resta en el origen y suma o
 fusiona en el destino, también en una sola transacción.
 
-**Stock por almacén.** Agrupado por `no_parte` (la suma la hace SQL, en `vw_stock_agrupado`), con detalle
-por existencia. Aquí se puede cambiar el estado o la ubicación de una existencia, pero la cantidad
-**solo cambia registrando movimientos o transferencias**.
+**Stock por almacén.** Incluye consumibles y componentes. Una fila por almacén + n.º de parte, **sin mirar ubicación ni
+estado** (la suma la hace SQL, en `vw_stock_agrupado`): varios componentes con el mismo n.º de parte se agrupan en una
+fila. Filtros por tipo, n.º de parte, nombre, serie o código interno, estado, código de control y código de barras
+(escaneo). El detalle muestra cada existencia con su ubicación; ahí se puede cambiar el estado o la ubicación, pero la
+cantidad **solo cambia registrando movimientos o transferencias**.
 
 **Equipos.** Tarjetas, tabla y dashboard; asignación a establecimientos con código y horómetros;
 historial; y botón **Descargar** que exporta a `.xlsx` la lista con los filtros aplicados.
