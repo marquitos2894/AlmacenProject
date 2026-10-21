@@ -112,6 +112,11 @@ Varias listas traen buscador (`search` en `crud.js`) y alternan tarjetas/tabla/d
 única, con serie, modelo y código interno). Los componentes tienen "Pertenece a" (establecimiento por
 defecto), tipo de producto y etiquetas `#hashtag`; los productos enlazan equipos compatibles por modelo.
 
+**Búsqueda en Productos.** Una sola barra para Consumibles y Componentes: el texto normal busca por nombre,
+n.º de parte, marca y código; si lo escrito **empieza con `#`** se filtra por etiqueta, con coincidencia parcial
+(`#bom` encuentra `#bomba`) y sugerencias de las etiquetas en uso. En el Dashboard de Componentes la etiqueta
+sigue siendo un combo.
+
 **Códigos de barras** (JsBarcode; escáner con la cámara vía ZXing): consumible → su `no_parte` (o `INT-XXXXX`
 autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑO-N`.
 

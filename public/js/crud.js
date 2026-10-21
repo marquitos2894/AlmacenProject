@@ -33,6 +33,10 @@ import { botonEscanear } from "./scanner.js";
 // { fields: ['nombre', 'no_parte'], placeholder?: '…' }. Filtra con ilike sobre
 // esas columnas (deben existir en todas las fuentes de las pestañas).
 //
+// `search.etiquetas` (opcional, función async → string[]) activa la búsqueda por
+// etiqueta: si lo escrito empieza con `#`, se filtra la columna `etiquetas`
+// (coincidencia parcial) en lugar de buscar por texto, y se sugieren las etiquetas.
+//
 // Una opción de `segments` puede además traer `card: (row, ctx) => Node` (junto
 // con `columns`): la lista de esa pestaña se dibuja como cuadrícula de tarjetas
 // y aparece un conmutador "Ver tabla / Ver tarjetas". `ctx` = { rerender,
@@ -45,6 +49,8 @@ export function createCrudView(config) {
   // (mismo patrón que la pestaña Dashboard de Equipos) para sumar un tercer modo.
   let modo = "tarjetas";
   let pagina = 0; // sobrevive a los re-render (p. ej. tras guardar se sigue en la misma página)
+  // Etiquetas en uso para la búsqueda "#etiqueta" (solo si config.search.etiquetas).
+  let etiquetasEnUso = [];
 
   return {
     async render(root) {
@@ -92,11 +98,17 @@ export function createCrudView(config) {
 
       const listContainer = el("div", mostrarTarjetas ? {} : { class: "card" }, [el("div", { class: "loading", text: "Cargando…" })]);
 
+      // Se recarga en cada render para ver las etiquetas nuevas tras guardar. Si
+      // falla, la búsqueda por texto sigue funcionando (solo se pierde "#").
+      if (config.search?.etiquetas) {
+        try { etiquetasEnUso = await config.search.etiquetas(); } catch { etiquetasEnUso = []; }
+      }
+
       // Solo refresca la lista (no reconstruye barra ni cabecera), para no
       // perder el foco del buscador ni el scroll al cambiar de página.
       const irAPagina = (p) => {
         pagina = p;
-        refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
+        refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina, etiquetasEnUso);
       };
 
       // Una opción de segmento puede sumar sus propios filtros (más allá de la
@@ -108,34 +120,39 @@ export function createCrudView(config) {
         root.appendChild(
           await opcion.filtrosExtra(() => {
             pagina = 0;
-            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
+            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina, etiquetasEnUso);
           })
         );
       }
 
       if (config.search) {
         root.appendChild(
-          buildSearchBar(config.search, termino, (valor) => {
+          buildSearchBar(config.search, termino, etiquetasEnUso, (valor) => {
             termino = valor;
             pagina = 0; // el filtro cambió: vuelve al principio
-            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
+            refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina, etiquetasEnUso);
           })
         );
       }
 
       root.appendChild(listContainer);
-      await refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina);
+      await refreshList(config, listContainer, rerender, segmentoActivo, opcion, termino, mostrarTarjetas, pagina, irAPagina, etiquetasEnUso);
     },
   };
 }
 
-function buildSearchBar(search, valor, onChange) {
+function buildSearchBar(search, valor, etiquetas, onChange) {
   const input = el("input", {
     class: "listbar__input", type: "search", value: valor,
     placeholder: search.placeholder || "Buscar…",
     autocomplete: "off", spellcheck: "false", "aria-label": search.placeholder || "Buscar",
     oninput: debounce((e) => onChange(e.target.value), 250),
   });
+  // Sugerencias al teclear "#": las etiquetas ya en uso.
+  const sugerencias = etiquetas?.length
+    ? el("datalist", { id: "listbar-etiquetas" }, etiquetas.map((t) => el("option", { value: `#${t}` })))
+    : null;
+  if (sugerencias) input.setAttribute("list", "listbar-etiquetas");
   // Botón de cámara: al escanear rellena el mismo `onChange` que teclear.
   const scan = botonEscanear((codigo) => { input.value = codigo; onChange(codigo); });
 
@@ -143,9 +160,17 @@ function buildSearchBar(search, valor, onChange) {
     el("div", { class: "listbar__search" }, [
       el("span", { class: "listbar__icon", "aria-hidden": "true", html: icon("search", { size: 16, stroke: 2 }) }),
       input,
+      sugerencias,
     ]),
     scan,
   ]);
+}
+
+// Misma normalización que el trigger fn_productos_normaliza_etiquetas (0059).
+function normalizarEtiqueta(t) {
+  return t.toLowerCase().replace(/^#+/, "").trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9áéíóúñü_-]/g, "");
 }
 
 function debounce(fn, ms = 250) {
@@ -223,7 +248,7 @@ function buildHeader(config, onNew, extra) {
 
 const PAGE_DEFAULT = 50;
 
-async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false, pagina = 0, irAPagina = null) {
+async function refreshList(config, container, rerender, segmentoActivo, opcion, termino = "", mostrarTarjetas = false, pagina = 0, irAPagina = null, etiquetasEnUso = []) {
   clear(container);
   // Una tarjeta ocupa mucho más que una fila de tabla: una pestaña puede
   // pedir menos por página en ese modo (p. ej. Componentes en Tarjetas).
@@ -253,7 +278,19 @@ async function refreshList(config, container, rerender, segmentoActivo, opcion, 
   // pestaña que lee de una vista con columnas que la otra no tiene).
   const busca = config.search ? termino.replace(/[,()*]/g, " ").trim() : "";
   const searchFields = opcion?.searchFields || config.search?.fields;
-  if (busca && searchFields) {
+  if (busca && config.search?.etiquetas && busca.startsWith("#")) {
+    // "#algo": se busca por etiqueta, no por texto. Las etiquetas están
+    // normalizadas por trigger (minúsculas, sin '#', espacios → '-'), así que se
+    // normaliza igual lo escrito y se resuelve contra las etiquetas en uso: un
+    // `contains` de array no admite coincidencia parcial.
+    const texto = normalizarEtiqueta(busca);
+    if (!texto) {
+      query = query.not("etiquetas", "eq", "{}"); // "#" solo: cualquiera que tenga etiquetas
+    } else {
+      const coinciden = etiquetasEnUso.filter((t) => t.includes(texto));
+      query = coinciden.length ? query.overlaps("etiquetas", coinciden) : query.eq("id", -1);
+    }
+  } else if (busca && searchFields) {
     query = query.or(searchFields.map((f) => `${f}.ilike.%${busca}%`).join(","));
   }
 
