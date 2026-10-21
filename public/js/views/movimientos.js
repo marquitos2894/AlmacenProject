@@ -476,13 +476,22 @@ async function renderForm(root, almacenId) {
 
     const tbody = el("tbody");
     carrito.forEach((linea, i) => {
+      // Un componente es una unidad física única (una pieza = un código interno):
+      // su cantidad es siempre 1. Otra pieza igual se da de alta como producto propio.
+      const unica = !!linea.producto.es_trazable;
+      if (unica) linea.cantidad = 1;
       const cant = el("input", {
-        class: "input input--qty", type: "number", min: "0.01", step: "any",
+        class: "input input--qty", type: "number",
+        min: unica ? "1" : "0.01", max: unica ? "1" : null, step: unica ? "1" : "any",
         value: String(linea.cantidad),
         "aria-label": `Cantidad de ${linea.producto.nombre}`,
+        title: unica ? "Un componente es una sola unidad" : null,
         onchange: (e) => {
           const n = Number(e.target.value);
-          if (n > 0) { linea.cantidad = n; pintarCarrito(); }
+          if (unica && n !== 1) {
+            toast("Un componente es una sola unidad. Si hay otra pieza igual, regístrala como un componente nuevo con su propio código interno.", "error");
+            e.target.value = "1";
+          } else if (n > 0) { linea.cantidad = n; pintarCarrito(); }
           else { e.target.value = String(linea.cantidad); }
         },
       });

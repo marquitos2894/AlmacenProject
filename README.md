@@ -52,8 +52,8 @@ Como no hay backend, **la lógica que debe ser atómica vive en funciones de Pos
    - **0057–0059** — tipos de producto, bitácora (`log_eventos`), pertenencia a establecimiento y etiquetas.
    - **0060** — proveedores. En una base **nueva**, ejecútala justo después de la 0001: la 0022 (roles) y la 0042
      ya dependen de `proveedores` y de `movimientos.id_proveedor`.
-   - **0061–0062** — el Stock Inicial acumula en vez de reemplazar; `vw_stock_agrupado` agrega códigos de barras,
-     series y códigos internos (Stock por almacén con componentes).
+   - **0061–0063** — el Stock Inicial acumula en vez de reemplazar; `vw_stock_agrupado` agrega códigos de barras,
+     series y códigos internos (Stock por almacén con componentes); un componente nunca pasa de 1 unidad.
 
    Faltan a propósito los números 0011, 0012, 0015 y 0018 (huecos históricos).
 
@@ -160,7 +160,9 @@ de escritura.
   (con `NULLS NOT DISTINCT`).
 - **Ubicación normalizada**: `A-7`, `a-7` y `A-7 ` son la misma. La columna generada `ubicacion_norm`
   (`upper(btrim(...))`) es la que se indexa; `ubicacion` conserva lo que escribió el usuario.
-- **Componentes trazables** (`es_trazable`): solo pueden existir en **un almacén** y no se duplican. Cambiarles
+- **Componentes trazables** (`es_trazable`): una pieza = un código interno = **una unidad**; nunca más de 1 en
+  stock (lo impone `registrar_movimiento` y un CHECK, 0063). Otra pieza igual es un producto nuevo con su propio
+  código. Solo pueden existir en **un almacén** y no se duplican. Cambiarles
   el estado o la ubicación **muda** su fila. Una salida total los saca del inventario (la existencia se
   desactiva). Estado y ubicación canónicos viven en `producto_almacen`.
 - **Consumibles**: al agotarse pierden su ubicación, y sus existencias vacías se consolidan para no fragmentar
