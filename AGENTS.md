@@ -37,7 +37,7 @@ public/js/…                           pickerModal, productSearch, productoForm
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
 public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
-supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0060)
+supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0061)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)
 ```
 
@@ -63,7 +63,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 ## Base de datos (Supabase)
 
 ### Migraciones
-- Un archivo por cambio, numeración correlativa (`0061_…` es la siguiente). Hay huecos históricos
+- Un archivo por cambio, numeración correlativa (`0062_…` es la siguiente). Hay huecos históricos
   (0011, 0012, 0015, 0018): no los rellenes.
 - Escríbelas **idempotentes** (`if not exists`, `create or replace`, `drop … if exists`) y con
   cabecera `--` que explique el problema y la decisión.
@@ -86,7 +86,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 - **Movimientos** (`movimientos` + `movimiento_detalle`, folio `TKT-AAMMDD-####`): se crean **solo** con la RPC
   `registrar_movimiento`. El stock **no se edita a mano**: solo vía movimientos, transferencias,
   `cambiar_estado_existencia` o `anular_movimiento` (reversión retroactiva, no borra historial, 0056).
-  *Stock Inicial* reemplaza (no suma) esa existencia. El detalle guarda foto de estado/ubicación/código de control.
+  *Stock Inicial* **acumula** como una entrada (0061; antes reemplazaba y borraba stock): nunca pisa el stock existente. El detalle guarda foto de estado/ubicación/código de control.
 - **Transferencias** (`registrar_transferencia`, folio `TRF-…`): resta en origen y suma/fusiona en destino; una
   transferencia total desactiva el origen (0033).
 - **Códigos**: `codigo_barras` de consumible = `no_parte` (0040); sin `no_parte` ⇒ `INT-XXXXX` (0041); componente ⇒
