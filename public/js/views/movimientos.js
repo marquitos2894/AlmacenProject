@@ -318,7 +318,7 @@ async function renderForm(root, almacenId) {
     chkInicial,
     el("div", {}, [
       el("label", { class: "form-label", for: "es-stock-inicial", text: "Este movimiento es un Stock Inicial" }),
-      el("p", { class: "form-hint", text: "Reemplaza la existencia con ese estado y ubicación, en vez de sumarle. Las demás existencias del producto no se tocan." }),
+      el("p", { class: "form-hint", text: "Se suma a la existencia con ese estado y ubicación (si no existe, se crea con esa cantidad). Nunca reemplaza el stock que ya tiene." }),
     ]),
   ]);
 
@@ -569,7 +569,7 @@ async function renderForm(root, almacenId) {
     if (esInicial) {
       resumen.appendChild(
         el("p", { class: "notice notice--warn", role: "status" },
-          "Stock Inicial: cada renglón dejará esa existencia (producto + estado + ubicación) exactamente en la cantidad capturada. Las demás existencias del mismo producto no cambian.")
+          "Stock Inicial: cada renglón se suma a esa existencia (producto + estado + ubicación); si ya tenía stock, no se reemplaza. Para corregir un conteo, registra un ajuste con la diferencia.")
       );
     }
 

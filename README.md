@@ -52,6 +52,7 @@ Como no hay backend, **la lógica que debe ser atómica vive en funciones de Pos
    - **0057–0059** — tipos de producto, bitácora (`log_eventos`), pertenencia a establecimiento y etiquetas.
    - **0060** — proveedores. En una base **nueva**, ejecútala justo después de la 0001: la 0022 (roles) y la 0042
      ya dependen de `proveedores` y de `movimientos.id_proveedor`.
+   - **0061** — el Stock Inicial acumula en vez de reemplazar.
 
    Faltan a propósito los números 0011, 0012, 0015 y 0018 (huecos históricos).
 
@@ -122,7 +123,7 @@ autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑ
    - **Agregar producto** abre un modal de búsqueda (debounce de 300 ms) sobre no. de parte, nombre, serie,
      código interno y código de control, con badge de existencia y alta rápida de productos.
    - Referencias opcionales del movimiento: componente, equipo, establecimiento y **proveedor**.
-   - **Stock Inicial**: *reemplaza* la existencia en lugar de sumarla.
+   - **Stock Inicial**: se *suma* a la existencia (nunca la reemplaza); es una entrada marcada como carga inicial.
    - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket imprimible.
    - Un ticket se puede **anular**: se revierte su efecto en el stock sin borrar el historial.
 
@@ -158,7 +159,7 @@ de escritura.
   el stock.
 - **Salidas**: el renglón identifica la existencia exacta (`producto_almacen_id`); una salida nunca deja el
   stock por debajo de cero.
-- **Stock Inicial** sobrescribe **solo esa existencia**; las demás del mismo producto no se tocan.
+- **Stock Inicial** acumula como una entrada: no pisa el stock que ya tiene la existencia (0061). Anularlo resta su cantidad.
 - **Equipos**: solo una asignación abierta por equipo; su estado y establecimiento actuales se derivan de ella.
 - **Proveedores**: ni el código ni el RUC pueden repetirse entre proveedores activos.
 
