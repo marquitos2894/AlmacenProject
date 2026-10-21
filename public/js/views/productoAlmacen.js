@@ -1,7 +1,9 @@
 // Stock por almacén — SOLO CONSULTA.
-// Una fila por (almacén + n.º de parte): la suma y las cuentas las hace SQL
-// (vw_stock_agrupado), paginado en el servidor. El modal "Ver detalles" abre el
-// desglose por existencia. El stock se modifica únicamente desde Movimientos.
+// Una fila por (almacén + n.º de parte), sin mirar ubicación ni estado: la suma
+// y las cuentas las hace SQL (vw_stock_agrupado), paginado en el servidor.
+// Incluye consumibles y componentes (trazables); varios componentes con el mismo
+// n.º de parte se agrupan en una fila. El modal "Ver detalles" abre el desglose
+// por existencia. El stock se modifica únicamente desde Movimientos.
 import { supabase } from "../supabaseClient.js";
 import { puedeEditar } from "../auth.js";
 import { mensajeError } from "../crud.js";
@@ -9,9 +11,8 @@ import { el, clear, toast, openModal, buildField, readField, buildTable, iconBut
 import { badgeEstado, badgeAlmacen, badgeStock } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
 
-// Solo consumibles: los componentes (trazables) viven en Productos → Componentes,
-// donde se ve su ubicación y se edita su estado.
-const filtros = { almacen_id: "", no_parte: "", nombre: "", estado_id: "", codigo_barras: "", codigo_control: "" };
+// `tipo`: "" (todos) | "consumible" | "componente".
+const filtros = { almacen_id: "", tipo: "", no_parte: "", nombre: "", serie: "", estado_id: "", codigo_barras: "", codigo_control: "" };
 
 // Filas por página. La lista se pide al servidor de página en página
 // (`range` + `count`), nunca entera.
@@ -24,7 +25,7 @@ export default {
       el("div", { class: "page-header" }, [
         el("div", {}, [
           el("h2", { class: "page-title", text: "Stock por almacén" }),
-          el("p", { class: "page-subtitle", text: "Consumibles en existencia, agrupados por número de parte." }),
+          el("p", { class: "page-subtitle", text: "Consumibles y componentes en existencia, agrupados por número de parte." }),
         ]),
         puedeEditar()
           ? el("a", { class: "btn btn--ghost", href: "#/movimientos", text: "Registrar un movimiento" })
@@ -53,14 +54,25 @@ export default {
       // stock y la cuenta de existencias/ubicaciones; el desglose por
       // ubicación/estado/código de control va en "Ver detalles". Todos los
       // filtros viajan al servidor y solo se trae la página pedida.
-      let q = supabase.from("vw_stock_agrupado").select("*", { count: "exact" }).eq("es_trazable", false);
+      let q = supabase.from("vw_stock_agrupado").select("*", { count: "exact" });
+      if (filtros.tipo) q = q.eq("es_trazable", filtros.tipo === "componente");
       if (filtros.almacen_id) q = q.eq("almacen_id", filtros.almacen_id);
       if (filtros.no_parte) q = q.ilike("no_parte", `%${filtros.no_parte}%`);
       // El estado ya no es del grano: la fila reúne todas las existencias del
       // producto. Filtrar por estado = "tiene alguna existencia en ese estado".
       if (filtros.estado_id) q = q.contains("estado_ids", [Number(filtros.estado_id)]);
       if (filtros.nombre) q = q.ilike("producto_nombre", `%${filtros.nombre}%`);
-      if (filtros.codigo_barras) q = q.ilike("codigo_barras", `%${filtros.codigo_barras}%`);
+      // Serie o código interno de un componente (el grupo puede reunir varios).
+      if (filtros.serie) {
+        const t = filtros.serie.replace(/[,()*]/g, " ").trim();
+        if (t) q = q.or(`series.ilike.%${t}%,codigos_internos.ilike.%${t}%`);
+      }
+      // El código de barras de un componente es su serie o su código interno (0039)
+      // y un grupo puede tener varios: se busca en los tres, no solo en el "menor".
+      if (filtros.codigo_barras) {
+        const c = filtros.codigo_barras.replace(/[,()*]/g, " ").trim();
+        if (c) q = q.or(`codigos_barras.ilike.%${c}%,codigos_internos.ilike.%${c}%,series.ilike.%${c}%`);
+      }
       if (filtros.codigo_control) q = q.ilike("codigos_control", `%${filtros.codigo_control}%`);
       // Orden total y estable = el grano completo (más el nombre como desempate
       // para las filas sin no. de parte), para que la paginación no salte ni
@@ -84,6 +96,7 @@ export default {
       const columnas = [
         { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },
         { key: "no_parte", label: "No. parte", render: (r) => el("span", { class: "mono", text: r.no_parte || "Sin no. de parte" }) },
+        { key: "es_trazable", label: "Tipo", render: (r) => badgeTipo(r.es_trazable) },
         { key: "producto_nombre", label: "Producto", render: celdaProducto },
         { key: "marca", label: "Marca", render: (r) => el("span", { text: r.marca || "—" }) },
         { key: "stock_total", label: "Stock", render: (r) => badgeStock(r.stock_total ?? 0) },
@@ -118,12 +131,19 @@ export default {
   },
 };
 
+const badgeTipo = (esTrazable) => (esTrazable
+  ? el("span", { class: "badge badge--fijo", text: "Componente" })
+  : el("span", { class: "badge", text: "Consumible" }));
+
 // Celda "Producto": nombre y, debajo, el/los código(s) de control de sus
 // existencias en ese almacén (la fila agrupa todo el n.º de parte, así que
-// puede haber más de uno si hay varios lotes).
+// puede haber más de uno si hay varios lotes) y, en componentes, las series o
+// códigos internos de las unidades del grupo.
 function celdaProducto(r) {
+  const identidad = r.es_trazable ? (r.series || r.codigos_internos) : null;
   return el("div", { class: "cell-stack" }, [
     el("div", { text: r.producto_nombre || "—" }),
+    identidad ? el("div", { class: "cell-sub mono", text: identidad }) : null,
     r.codigos_control ? el("div", { class: "cell-sub mono", text: `Cód. control: ${r.codigos_control}` }) : null,
   ]);
 }
@@ -134,6 +154,14 @@ function buildFiltros({ almacenes, estados }, onChange) {
   });
   const estado = selectFiltro("f-estado", "Todos los estados", estados, filtros.estado_id, (v) => {
     filtros.estado_id = v; onChange();
+  });
+  const tipo = el("select", { class: "input", id: "f-tipo", onchange: (e) => { filtros.tipo = e.target.value; onChange(); } }, [
+    ["", "Todos"], ["consumible", "Consumibles"], ["componente", "Componentes"],
+  ].map(([v, t]) => { const o = el("option", { value: v, text: t }); if (v === filtros.tipo) o.selected = true; return o; }));
+  const serie = el("input", {
+    class: "input", type: "search", id: "f-serie", value: filtros.serie,
+    placeholder: "Serie o cód. interno…", autocomplete: "off", spellcheck: "false",
+    oninput: debounce((e) => { filtros.serie = e.target.value; onChange(); }),
   });
   const noParte = el("input", {
     class: "input", type: "search", id: "f-no-parte", value: filtros.no_parte,
@@ -153,7 +181,7 @@ function buildFiltros({ almacenes, estados }, onChange) {
 
   // Código de barras: no hay input tecleable; se fija escaneando y se muestra
   // como chip con "✕" para limpiarlo. Con código activo, `cargar()` filtra por
-  // la columna `codigo_barras` de vw_stock_agrupado.
+  // `codigos_barras` / `codigos_internos` / `series` de vw_stock_agrupado.
   const celdaCodigo = el("div", {});
   function pintarCeldaCodigo() {
     clear(celdaCodigo);
@@ -178,8 +206,10 @@ function buildFiltros({ almacenes, estados }, onChange) {
     el("div", { class: "filter filter--primary" }, [
       el("label", { class: "filter-label", for: "f-almacen", text: "Almacén" }), almacen,
     ]),
+    el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-tipo", text: "Tipo" }), tipo]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-no-parte", text: "No. de parte" }), noParte]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-nombre", text: "Nombre" }), nombre]),
+    el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-serie", text: "Serie / cód. interno" }), serie]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-estado", text: "Estado" }), estado]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", for: "f-codigo-control", text: "Cód. control" }), codigoControl]),
     el("div", { class: "filter" }, [el("label", { class: "filter-label", text: "Código de barras" }), celdaCodigo]),
@@ -205,10 +235,12 @@ function verDetalle(grupo, onCambio) {
     // La fila de la lista reúne todas las existencias del producto en el
     // almacén; aquí se listan una por una (cada ubicación · estado · código de
     // control) y sus totales cuadran con la fila.
+    // Con n.º de parte se piden todos los productos del grupo (varios componentes
+    // pueden compartirlo); sin él, el grupo es un solo producto.
     let q = supabase.from("vw_producto_almacen").select("*").eq("almacen_id", grupo.almacen_id);
-    q = grupo.producto_id
-      ? q.eq("producto_id", grupo.producto_id)
-      : (grupo.no_parte ? q.eq("no_parte", grupo.no_parte) : q.is("no_parte", null));
+    q = (grupo.no_parte && grupo.no_parte.trim())
+      ? q.eq("no_parte", grupo.no_parte)
+      : q.eq("producto_id", grupo.producto_id);
     const { data: rows, error } = await q.order("estado_nombre").order("ubicacion");
 
     clear(body);
@@ -234,6 +266,7 @@ function verDetalle(grupo, onCambio) {
     // Nombre y no. de parte ya van en el encabezado de arriba (mismo producto).
     const columnas = [
       { key: "no_serie", label: "Serie", render: (r) => el("span", { class: "mono", text: r.no_serie || "—" }) },
+      { key: "codigo_interno", label: "Cód. interno", render: (r) => el("span", { class: "mono", text: r.codigo_interno || "—" }) },
       { key: "codigo_control", label: "Cód. control", render: (r) => el("span", { class: "mono", text: r.codigo_control || "—" }) },
       { key: "estado_nombre", label: "Estado", render: (r) => badgeEstado(r.estado_nombre) },
       { key: "almacen_nombre", label: "Almacén", render: (r) => badgeAlmacen(r.almacen_nombre) },

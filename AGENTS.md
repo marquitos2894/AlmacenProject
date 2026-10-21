@@ -37,7 +37,7 @@ public/js/…                           pickerModal, productSearch, productoForm
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
 public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
-supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0061)
+supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0063)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)
 ```
 
@@ -63,7 +63,7 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 ## Base de datos (Supabase)
 
 ### Migraciones
-- Un archivo por cambio, numeración correlativa (`0062_…` es la siguiente). Hay huecos históricos
+- Un archivo por cambio, numeración correlativa (`0064_…` es la siguiente). Hay huecos históricos
   (0011, 0012, 0015, 0018): no los rellenes.
 - Escríbelas **idempotentes** (`if not exists`, `create or replace`, `drop … if exists`) y con
   cabecera `--` que explique el problema y la decisión.
@@ -79,7 +79,8 @@ Tipos de producto, Establecimientos (`unidad_operativa`), Bitácora.
 - **Existencia** (`producto_almacen`) = producto + almacén + estado + ubicación (+ **código de control**: N.º OT/código
   de proveedor, mig. 0042). Índice único `uq_producto_almacen_grano` con `NULLS NOT DISTINCT`. Estados/ubicaciones
   distintos **no se suman**: crean otra existencia. `ubicacion_norm` (`upper(btrim)`) es lo que se indexa.
-- **Trazables**: solo en un almacén, no se duplican; cambiar estado/ubicación **muda** la fila. Estado y ubicación
+- **Trazables**: una pieza = un código interno = **una unidad** (stock nunca > 1: `registrar_movimiento` + CHECK, 0063;
+  otra pieza igual es un producto nuevo). Solo en un almacén, no se duplican; cambiar estado/ubicación **muda** la fila. Estado y ubicación
   canónicos viven en `producto_almacen`; `productos.estado_actual/ubicacion_actual` se derivan por trigger (0023).
   Una salida total desactiva la existencia (0026, 0050); un consumible agotado pierde su ubicación (0030) y sus
   existencias vacías se consolidan (0032).
