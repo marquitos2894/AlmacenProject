@@ -8,7 +8,7 @@ import { iconButton, el } from "../ui.js";
 import { renderDashboardComponentes } from "./productosComponentesDashboard.js";
 import {
   buildFiltrosComponentes, cargarOpcionesFiltroComponentes, aplicarFiltrosComponentesQuery,
-  buildFiltroEtiqueta, aplicarFiltroEtiquetaQuery, cargarEtiquetas,
+  cargarEtiquetas,
 } from "./productosComponentesFiltros.js";
 
 // Series y códigos se leen mejor en monoespaciada, como el resto de códigos.
@@ -124,9 +124,12 @@ export default createCrudView({
   // Movimientos → "Crear producto nuevo" (public/js/productoForm.js).
   ...productoFormConfig,
   orderBy: "nombre",
+  // Una sola barra: texto normal busca por estos campos; si empieza con "#" se
+  // filtra por etiqueta (coincidencia parcial, con sugerencias). Ver crud.js.
   search: {
     fields: ["nombre", "no_parte", "marca", "codigo_barras"],
-    placeholder: "Buscar por nombre, n.º de parte, código…",
+    placeholder: "Buscar por nombre, n.º de parte, código… o #etiqueta",
+    etiquetas: cargarEtiquetas,
   },
   // Dos listas separadas: el catálogo a granel y el que se sigue pieza por
   // pieza. Un trazable ES una máquina concreta (dos con series distintas son
@@ -138,9 +141,6 @@ export default createCrudView({
     options: [
       {
         value: false, label: "Consumibles", hint: "se cuentan por cantidad",
-        // Misma etiqueta que el filtro de Componentes (estado compartido).
-        filtrosExtra: async (onChange) => buildFiltroEtiqueta(await cargarEtiquetas(), onChange),
-        applyFilters: (query) => aplicarFiltroEtiquetaQuery(query),
       },
       {
         value: true,
@@ -152,9 +152,10 @@ export default createCrudView({
         dashboard: (container) => renderDashboardComponentes(container),
         // Tarjetas ocupa mucho más espacio por fila que Tabla: menos por página.
         cardPageSize: 15,
-        // Mismo filtro (modelo/estado/tipo) que el Dashboard — ver
-        // productosComponentesFiltros.js — reutilizado también aquí.
-        filtrosExtra: async (onChange) => buildFiltrosComponentes(await cargarOpcionesFiltroComponentes(), onChange),
+        // Mismo filtro (modelo/estado/tipo/establecimiento) que el Dashboard — ver
+        // productosComponentesFiltros.js —; la etiqueta aquí se busca con "#" en la barra.
+        filtrosExtra: async (onChange) =>
+          buildFiltrosComponentes(await cargarOpcionesFiltroComponentes(), onChange, { conEtiqueta: false }),
         applyFilters: (query) => aplicarFiltrosComponentesQuery(query),
         columns: [
           { key: "nombre", label: "Nombre" },

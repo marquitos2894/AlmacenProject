@@ -2,7 +2,9 @@
 // etiqueta): estado y lógica compartidos entre las tres vistas de Productos →
 // Componentes (Tarjetas, Tabla y Dashboard), para que elegir un filtro en una
 // se mantenga al pasar a otra en vez de tener tres copias independientes.
-// La etiqueta también la usa la pestaña Consumibles (misma agrupación por #).
+// La etiqueta solo es un combo en el Dashboard (no tiene barra de búsqueda);
+// en Tarjetas/Tabla y en Consumibles se busca escribiendo "#etiqueta" en la
+// barra de búsqueda (ver crud.js).
 import { supabase } from "../supabaseClient.js";
 import { el, buildSearchSelect } from "../ui.js";
 
@@ -65,23 +67,10 @@ function comboEtiqueta(etiquetas, onChange) {
   });
 }
 
-// Solo el combo de etiqueta, para la pestaña Consumibles.
-export function buildFiltroEtiqueta(etiquetas, onChange) {
-  return el("div", { class: "filters" }, [
-    el("div", { class: "filter filter--primary" }, [
-      el("label", { class: "filter-label", for: "f-prod-etiqueta", text: "Etiqueta" }),
-      comboEtiqueta(etiquetas, onChange),
-    ]),
-  ]);
-}
-
-export function aplicarFiltroEtiquetaQuery(query) {
-  return filtrosComponentes.etiqueta ? query.contains("etiquetas", [filtrosComponentes.etiqueta]) : query;
-}
-
 // `opciones`: { modelos: string[], estados: string[], tipos: {id,nombre}[],
 //               unidades: {id,nombre}[], etiquetas: string[] }
-export function buildFiltrosComponentes(opciones, onChange) {
+// `conEtiqueta: false` omite el combo de etiqueta (Tarjetas/Tabla: se usa la barra).
+export function buildFiltrosComponentes(opciones, onChange, { conEtiqueta = true } = {}) {
   const modelo = buildSearchSelect({
     id: "f-comp-modelo",
     placeholder: "Buscar modelo…",
@@ -130,7 +119,9 @@ export function buildFiltrosComponentes(opciones, onChange) {
 
   return el("div", { class: "filters" }, [
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-comp-unidad", text: "Pertenece a" }), unidad]),
-    el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-prod-etiqueta", text: "Etiqueta" }), comboEtiqueta(opciones.etiquetas, onChange)]),
+    conEtiqueta
+      ? el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-prod-etiqueta", text: "Etiqueta" }), comboEtiqueta(opciones.etiquetas, onChange)])
+      : null,
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-comp-modelo", text: "Modelo" }), modelo]),
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-comp-estado", text: "Estado" }), estado]),
     el("div", { class: "filter filter--primary" }, [el("label", { class: "filter-label", for: "f-comp-tipo", text: "Tipo de producto" }), tipo]),
@@ -153,7 +144,9 @@ export function aplicarFiltrosComponentesQuery(query) {
       ? query.is("unidad_operativa_id", null)
       : query.eq("unidad_operativa_id", filtrosComponentes.unidad);
   }
-  return aplicarFiltroEtiquetaQuery(query);
+  // La etiqueta NO se aplica aquí: en Tarjetas/Tabla ya no hay combo (se busca con
+  // "#" en la barra), y el estado compartido solo lo usa el Dashboard.
+  return query;
 }
 
 // Cliente, para el Dashboard (que ya tiene todas las filas cargadas).
