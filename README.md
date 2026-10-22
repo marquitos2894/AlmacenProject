@@ -124,7 +124,8 @@ autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑ
 **Movimientos — flujo de 3 pasos:**
 
 1. `#/movimientos` — eliges el **almacén** en tarjetas.
-2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por no. de parte, nombre y estado.
+2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por **ticket / folio** (coincidencia parcial: `0249`
+   o `TKT-261020-0249`), no. de parte, nombre y estado.
 3. `#/movimientos/{id}/nuevo` — encabezado + **carrito**:
    - **Agregar producto** abre un modal de búsqueda (debounce de 300 ms) sobre no. de parte, nombre, serie,
      código interno y código de control, con badge de existencia y alta rápida de productos.

@@ -15,7 +15,7 @@ import { el, clear, toast, openModal, buildField, readField, buildTable, iconBut
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
 
-const filtros = { no_parte: "", nombre: "", estado_id: "" };
+const filtros = { folio: "", no_parte: "", nombre: "", estado_id: "" };
 
 export default {
   async render(root, params = []) {
@@ -123,6 +123,12 @@ async function renderList(root, almacenId) {
     // Un renglón por línea de producto: cada movimiento se lista individual,
     // sin agruparse por ticket. Paginado en el servidor (`range` + `count`).
     let q = supabase.from("vw_movimiento_detalle").select("*", { count: "exact" }).eq("almacen_id", almacenId);
+    // Folio del ticket (TKT-AAMMDD-####): coincidencia parcial, así "0249" o
+    // "261020" bastan sin teclear el folio completo.
+    if (filtros.folio) {
+      const f = filtros.folio.replace(/[,()*%]/g, " ").trim();
+      if (f) q = q.ilike("folio", `%${f}%`);
+    }
     if (filtros.no_parte) {
       const t = filtros.no_parte.replace(/[,()*]/g, " ").trim();
       // Busca en no. de parte, código de barras, código de control y —solo
@@ -192,6 +198,11 @@ function celdaProducto(r, { serie = true } = {}) {
 
 
 function buildFiltros(estados, onChange) {
+  const folio = el("input", {
+    class: "input", type: "search", id: "f-folio", value: filtros.folio,
+    placeholder: "TKT-261020-0249 o 0249…", autocomplete: "off", spellcheck: "false",
+    oninput: debounce((e) => { filtros.folio = e.target.value; onChange(); }),
+  });
   const noParte = el("input", {
     class: "input", type: "search", id: "f-no-parte", value: filtros.no_parte,
     placeholder: "No. de parte, serie, código, cód. control…", autocomplete: "off", spellcheck: "false",
@@ -220,6 +231,7 @@ function buildFiltros(estados, onChange) {
   ]);
 
   return el("div", { class: "filters" }, [
+    filtro("f-folio", "Ticket / folio", folio),
     filtro("f-no-parte", "N.º parte / serie / código", noParte),
     filtro("f-nombre", "Nombre", nombre),
     filtro("f-estado", "Estado", estado),
