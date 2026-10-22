@@ -49,9 +49,10 @@ export function toast(message, type = "info") {
 // ---------------------------------------------------------------- Modal
 // readOnly: para modales de consulta (ticket, detalle) — un solo botón Cerrar.
 // actions: botones extra en el pie, p. ej. [{ label: "Imprimir", onClick }].
+// `onClose` (opcional): se llama al cerrar, sea cual sea la vía.
 // `danger`: para acciones irreversibles (anular, etc.) — el botón de submit
 // se pinta en rojo en vez del azul primario, mismo criterio que `confirmDialog`.
-export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [], danger = false }) {
+export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guardar", size, readOnly = false, actions = [], danger = false, onClose }) {
   const overlay = el("div", { class: "modal-overlay" });
   const closeBtn = el("button", { class: "modal__close", type: "button", html: "&times;", "aria-label": "Cerrar" });
   const form = el("form", { class: "modal__form" });
@@ -96,6 +97,7 @@ export function openModal({ title, subtitle, body, onSubmit, submitLabel = "Guar
     // si solo se quitaba al presionar Escape, cerrar por otra vía dejaba
     // el listener vivo en document para siempre.
     document.removeEventListener("keydown", onEsc);
+    onClose?.(); // p. ej. liberar recursos del cuerpo (URL de un PDF)
   }
   closeBtn.addEventListener("click", close);
   overlay.addEventListener("mousedown", (e) => {

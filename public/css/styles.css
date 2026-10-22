@@ -544,6 +544,8 @@ select.input:not([multiple]) {
 }
 .modal--sm { max-width: 420px; }
 .modal--wide { max-width: 880px; }
+/* Vista previa del ticket en PDF (Imprimir). */
+.pdf-preview { width: 100%; height: min(70vh, 720px); border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 .modal__header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   padding: 20px 24px; border-bottom: 1px solid var(--border);
