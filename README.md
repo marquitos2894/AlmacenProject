@@ -131,6 +131,10 @@ autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑ
    - Referencias opcionales del movimiento: componente, equipo, establecimiento y **proveedor**.
    - **Stock Inicial**: se *suma* a la existencia (nunca la reemplaza); es una entrada marcada como carga inicial.
    - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket imprimible.
+   - El ticket se puede **imprimir** o **compartir como PDF por WhatsApp** (botón "WhatsApp (PDF)"): abre el menú
+     de compartir del teléfono o del sistema con el PDF adjunto; en navegadores sin esa función, descarga el PDF y
+     abre WhatsApp con el resumen para que lo adjuntes. Lo mismo en el ticket de Transferencias. La compartición
+     con archivo exige HTTPS (o `localhost`).
    - Un ticket se puede **anular**: se revierte su efecto en el stock sin borrar el historial.
 
 El guardado usa `registrar_movimiento`: encabezado + detalle + ajuste de stock en **una sola transacción**.

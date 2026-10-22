@@ -11,6 +11,7 @@ import { openProductSearch } from "../productSearch.js";
 import { mensajeError } from "../crud.js";
 import { badgeAlmacen, badgeEstado } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
+import { enviarTicketPorWhatsApp } from "../ticketPdf.js";
 import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
@@ -434,13 +435,23 @@ async function renderForm(root) {
 // =====================================================================
 async function verTicket(base) {
   const body = el("div", { class: "modal__body" }, [el("p", { class: "loading", text: "Cargando ticket…" })]);
+  // Se rellena al terminar la carga; el botón de WhatsApp existe antes que los datos.
+  let paraCompartir = null;
   openModal({
     title: "Ticket de transferencia",
     body,
     submitLabel: "Cerrar",
     readOnly: true,
     size: "wide",
-    actions: [{ label: "Imprimir", onClick: () => imprimirZona() }],
+    actions: [
+      { label: "Imprimir", onClick: () => imprimirZona() },
+      {
+        label: "WhatsApp (PDF)",
+        onClick: () => (paraCompartir
+          ? enviarTicketPorWhatsApp(paraCompartir.ticket, paraCompartir.resumen)
+          : toast("El ticket se está cargando.", "info")),
+      },
+    ],
     onSubmit: async (close) => close(),
   });
 
@@ -498,6 +509,25 @@ async function verTicket(base) {
   hoja.appendChild(
     el("p", { class: "ticket__pie", text: `${(data || []).length} Items en Total · impreso desde Gestión de Almacén` })
   );
+
+  // Mismo contenido que la hoja, en texto plano, para el PDF de WhatsApp.
+  paraCompartir = {
+    ticket: {
+      titulo: "Ticket de transferencia", folio: t.folio, datos, observaciones: t.observaciones,
+      filas: data || [], pie: `${(data || []).length} Items en Total · Gestión de Almacén`,
+      columnas: [
+        { label: "Producto", valor: (r) => r.producto_nombre },
+        { label: "No. parte", valor: (r) => r.no_parte },
+        { label: "Serie / cód.", valor: (r) => r.no_serie || r.codigo_interno },
+        { label: "Estado", valor: (r) => r.estado_nombre },
+        { label: "Ubic. origen", valor: (r) => r.ubicacion_origen },
+        { label: "Ubic. destino", valor: (r) => r.ubicacion_destino },
+        { label: "Cantidad", valor: (r) => r.cantidad, derecha: true },
+      ],
+    },
+    resumen: [`Ticket ${t.folio}`, `Transferencia: ${t.almacen_origen_nombre || "?"} → ${t.almacen_destino_nombre || "?"}`,
+      t.fecha ? formatFecha(t.fecha) : null, `${(data || []).length} ítem(s)`].filter(Boolean).join("\n"),
+  };
 }
 
 // =====================================================================
