@@ -15,7 +15,7 @@ La seguridad y las reglas de negocio viven en la **base de datos** (RLS, trigger
 npm install
 npm start            # serve public → http://localhost:3000
 npm run dev:lan      # HTTPS autofirmado en 0.0.0.0:3000 (el escáner de cámara exige contexto seguro)
-npm run copy-vendor  # refresca public/vendor/ (supabase-js, jsbarcode, zxing, exceljs) desde node_modules
+npm run copy-vendor  # refresca public/vendor/ (supabase-js, jsbarcode, zxing, exceljs, jspdf, jspdf-autotable) desde node_modules
 ```
 
 No hay tests, linter ni paso de build. Verifica los cambios de UI en el navegador
@@ -31,11 +31,12 @@ public/js/supabaseClient.js           Cliente compartido + fetchAll() (paginaci�
 public/js/auth.js                     Sesión, ensureUsuario, puedeEditar() (rol 'lector' = solo lectura)
 public/js/crud.js                     createCrudView(config): CRUD estándar con soft-delete, segmentos, tarjetas/tabla/dashboard
 public/js/ui.js                       el(), toast, openModal, confirmDialog, buildField/readField, buildTable, paginador
+public/js/ticketPdf.js                PDF del ticket (jsPDF) y envío por WhatsApp (Web Share API + respaldo wa.me)
 public/js/…                           pickerModal, productSearch, productoForm, asignacionForm, scanner (zxing),
                                       barcode (JsBarcode), charts, badges, icons, historialProducto/Equipo,
                                       cambioEstadoExistencia
 public/js/views/*.js                  Una vista por pantalla (export default { render(root) })
-public/vendor/                        Bundles locales (no editar a mano); exceljs se carga bajo demanda
+public/vendor/                        Bundles locales (no editar a mano); exceljs y jspdf(+autotable) se cargan bajo demanda
 scripts/dev-lan.mjs                   Servidor HTTPS de desarrollo
 supabase/migrations/NNNN_*.sql        Esquema versionado (0001…0063)
 .mcp.json                             MCP de Supabase (project_ref del proyecto)

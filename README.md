@@ -124,13 +124,18 @@ autogenerado si no tiene); componente → su serie o su código interno `TCH-AÑ
 **Movimientos — flujo de 3 pasos:**
 
 1. `#/movimientos` — eliges el **almacén** en tarjetas.
-2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por no. de parte, nombre y estado.
+2. `#/movimientos/{id}` — tickets de ese almacén, con filtros por **ticket / folio** (coincidencia parcial: `0249`
+   o `TKT-261020-0249`), no. de parte, nombre y estado.
 3. `#/movimientos/{id}/nuevo` — encabezado + **carrito**:
    - **Agregar producto** abre un modal de búsqueda (debounce de 300 ms) sobre no. de parte, nombre, serie,
      código interno y código de control, con badge de existencia y alta rápida de productos.
    - Referencias opcionales del movimiento: componente, equipo, establecimiento y **proveedor**.
    - **Stock Inicial**: se *suma* a la existencia (nunca la reemplaza); es una entrada marcada como carga inicial.
    - Al guardar se genera el **folio** `TKT-{AAMMDD}-{####}` y se muestra el ticket imprimible.
+   - El ticket se puede **imprimir** o **compartir como PDF por WhatsApp** (botón "WhatsApp (PDF)"): abre el menú
+     de compartir del teléfono o del sistema con el PDF adjunto; en navegadores sin esa función, descarga el PDF y
+     abre WhatsApp con el resumen para que lo adjuntes. Lo mismo en el ticket de Transferencias. La compartición
+     con archivo exige HTTPS (o `localhost`).
    - Un ticket se puede **anular**: se revierte su efecto en el stock sin borrar el historial.
 
 El guardado usa `registrar_movimiento`: encabezado + detalle + ajuste de stock en **una sola transacción**.
