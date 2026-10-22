@@ -9,7 +9,7 @@
 // compartir del sistema, donde aparece WhatsApp con el PDF ya adjunto. Donde el
 // navegador no la soporta (Firefox de escritorio…) se descarga el PDF y se abre
 // WhatsApp con el resumen en texto para que el usuario adjunte el archivo.
-import { el, toast } from "./ui.js";
+import { el, toast, openModal } from "./ui.js";
 
 const LOGO = "img/logo/corimayologo.png";
 const LIBS = ["./vendor/jspdf.js", "./vendor/jspdf-autotable.js"];
@@ -146,4 +146,68 @@ export async function enviarTicketPorWhatsApp(ticket, resumen) {
   } catch (e) {
     toast(`No se pudo compartir el ticket: ${e.message}`, "error");
   }
+}
+
+function descargarArchivo(archivo) {
+  const url = URL.createObjectURL(archivo);
+  const a = el("a", { href: url, download: archivo.name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// "Imprimir": abre un modal con el MISMO PDF que se comparte por WhatsApp, y
+// desde ahí se imprime, se descarga o se comparte. Los navegadores móviles no
+// muestran PDF dentro de la página (navigator.pdfViewerEnabled = false): ahí se
+// ofrece abrirlo en una pestaña nueva en lugar de un visor vacío.
+export async function abrirVistaPreviaTicket(ticket, resumen) {
+  let archivo;
+  try {
+    toast("Preparando el PDF…", "info");
+    archivo = await generarTicketPdf(ticket);
+  } catch (e) {
+    toast(`No se pudo generar el PDF: ${e.message}`, "error");
+    return;
+  }
+  const url = URL.createObjectURL(archivo);
+  const puedeVer = navigator.pdfViewerEnabled !== false;
+
+  const visor = puedeVer
+    ? el("iframe", { class: "pdf-preview", src: `${url}#toolbar=0&navpanes=0`, title: `Ticket ${ticket.folio}` })
+    : null;
+  const body = el("div", { class: "modal__body" }, [
+    visor || el("div", { class: "empty-state" }, [
+      el("p", { text: "Este navegador no muestra PDF dentro de la página." }),
+      el("a", { class: "btn btn--primary", href: url, target: "_blank", rel: "noopener", text: "Abrir el PDF" }),
+    ]),
+  ]);
+
+  openModal({
+    title: `Ticket ${ticket.folio}`,
+    body,
+    readOnly: true,
+    size: "wide",
+    submitLabel: "Cerrar",
+    onClose: () => URL.revokeObjectURL(url),
+    actions: [
+      {
+        label: "Imprimir",
+        onClick: () => {
+          try {
+            visor.contentWindow.focus();
+            visor.contentWindow.print();
+          } catch {
+            window.open(url, "_blank", "noopener"); // sin visor imprimible: se imprime desde la pestaña
+          }
+        },
+      },
+      { label: "Descargar", onClick: () => descargarArchivo(archivo) },
+      {
+        label: "WhatsApp",
+        onClick: () => compartirTicketPdf(archivo, resumen).catch((e) => toast(`No se pudo compartir el ticket: ${e.message}`, "error")),
+      },
+    ],
+    onSubmit: async (close) => close(),
+  });
 }

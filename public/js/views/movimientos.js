@@ -10,8 +10,8 @@ import { botonEscanear } from "../scanner.js";
 import { mensajeError } from "../crud.js";
 import { badgeEstado } from "../badges.js";
 import { icon } from "../icons.js";
-import { enviarTicketPorWhatsApp } from "../ticketPdf.js";
-import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
+import { enviarTicketPorWhatsApp, abrirVistaPreviaTicket } from "../ticketPdf.js";
+import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, buildPaginador } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
 
@@ -669,7 +669,12 @@ async function verTicket(mov, onAnulado) {
     // `mov.anulado` ya viene de la fila de la lista (síncrono): no hace
     // falta esperar la relectura de abajo para decidir si mostrar el botón.
     actions: [
-      { label: "Imprimir", onClick: () => imprimirZona() },
+      {
+        label: "Imprimir",
+        onClick: () => (paraCompartir
+          ? abrirVistaPreviaTicket(paraCompartir.ticket, paraCompartir.resumen)
+          : toast("El ticket se está cargando.", "info")),
+      },
       {
         label: "WhatsApp (PDF)",
         onClick: () => (paraCompartir

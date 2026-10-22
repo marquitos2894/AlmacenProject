@@ -11,8 +11,8 @@ import { openProductSearch } from "../productSearch.js";
 import { mensajeError } from "../crud.js";
 import { badgeAlmacen, badgeEstado } from "../badges.js";
 import { botonEscanear } from "../scanner.js";
-import { enviarTicketPorWhatsApp } from "../ticketPdf.js";
-import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, imprimirZona, buildPaginador } from "../ui.js";
+import { enviarTicketPorWhatsApp, abrirVistaPreviaTicket } from "../ticketPdf.js";
+import { el, clear, toast, openModal, buildField, readField, buildTable, iconButton, buildPaginador } from "../ui.js";
 
 const LOGO_EMPRESA = "img/logo/corimayologo.png";
 const PAGE = 50; // líneas por página en el historial
@@ -444,7 +444,12 @@ async function verTicket(base) {
     readOnly: true,
     size: "wide",
     actions: [
-      { label: "Imprimir", onClick: () => imprimirZona() },
+      {
+        label: "Imprimir",
+        onClick: () => (paraCompartir
+          ? abrirVistaPreviaTicket(paraCompartir.ticket, paraCompartir.resumen)
+          : toast("El ticket se está cargando.", "info")),
+      },
       {
         label: "WhatsApp (PDF)",
         onClick: () => (paraCompartir
